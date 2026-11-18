@@ -59,6 +59,7 @@ export function LoginScreen({
         style={{ width: 400, background: "#fff", border: "1px solid #f0f0f0", borderRadius: 8, padding: "32px 32px 20px" }}
         onFinish={enter}
       >
+        <img src="/favicon.svg" width={48} height={48} alt="" style={{ display: "block", margin: "0 auto 10px" }} />
         <Typography.Title level={3} style={{ marginTop: 0, marginBottom: 4, textAlign: "center" }}>
           Huly Desk
         </Typography.Title>

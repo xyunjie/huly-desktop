@@ -1,82 +1,92 @@
 # Huly Desk
 
-面向自建 Huly（[hcengineering/platform](https://github.com/hcengineering/platform)）的 macOS 任务客户端，第一期只做任务跟踪。界面用 Ant Design 5，简体中文，列表、看板和详情并排。快捷键在窗口里的「快捷键」和命令面板里，不在顶部横幅。
+<img src="public/favicon.svg" width="64" height="64" alt="Huly 标志" />
 
-生产环境默认使用官方 [`@hcengineering/api-client`](https://github.com/hcengineering/huly.core)（本仓库锁定 0.7.x）连接工作区。示例数据走同一套 `DeskClient` 接口，不访问网络，方便在连不上实例的机器上开发和看界面。
+Huly Desk 是一个面向跨平台的 [Huly](https://github.com/hcengineering/platform) 桌面客户端，专注于项目和任务管理。用任务列表快速找到工作，用看板跟踪进度，在独立的详情页里处理描述、附件、评论和活动记录。
 
-默认服务器是 `https://lm.all666.cn:666`，默认工作区 slug 是 `ws-6aa0e320-776b6c69e0-2f809f`（网页里显示为「公司」）。登录页可以改这两项。
+你可以连接自己的 Huly 实例，也可以先用示例数据体验界面。示例模式不需要账号，不连接 Huly 服务器。
 
-## 在 Mac 上构建
+## 主要功能
 
-只支持 Apple Silicon（`aarch64-apple-darwin`），最低 macOS 13 Ventura。Intel Mac 会在编译时直接失败。
+- **项目与任务**：切换工作区，浏览项目，创建任务和子任务，使用列表或看板跟踪进度。
+- **搜索与筛选**：按标题或编号搜索，按状态、指派人、优先级、标签、里程碑和截止日期筛选。
+- **任务详情**：编辑富文本描述，上传图片、视频和其他附件，发表评论，查看任务活动和描述变更。
+- **协作与管理**：查看通知并跳转到对应任务；有权限的成员可以管理项目成员、里程碑、组件和任务模板。
 
-需要：
+连接真实实例时，可用功能取决于服务器版本、配置和账号权限。
 
-- Xcode Command Line Tools（`xcode-select --install`）
-- Node.js 22（或当前的 Node 20+）
-- Rust 1.90 或更新的 stable（`curl https://sh.rustup.rs -sSf | sh`，然后新开一个终端）。锁定的桌面壳是 Tauri `2.12.6`，命令行是 `@tauri-apps/cli` `2.12.5`。界面使用 Ant Design 5，中文语言包。
+## 平台状态
 
-```bash
-rustup update stable
-rustup target add aarch64-apple-darwin
-npm i
-npm run tauri dev
-```
+桌面端基于 [Tauri 2](https://tauri.app/)，界面使用 React 和 TypeScript。发布标签会构建下列桌面安装包，生成后可在 [GitHub Releases](https://github.com/xyunjie/huly-desktop/releases) 下载：
 
-打安装包（未签名的 `.app` / `.dmg`，需要在这台 Mac 上执行，Linux 虚拟机做不到）：
+| 平台 | 安装包 |
+| --- | --- |
+| macOS 13 及以上（Apple Silicon 和 Intel） | 通用 `.dmg` |
+| Windows x64 | `.exe` 安装程序 |
+| Linux x64 | `.deb` 和 `.AppImage` |
 
-```bash
-npm run tauri build -- --target aarch64-apple-darwin
-```
+也可以在支持 Node.js 的平台上用浏览器运行示例模式。
 
-产物在 `src-tauri/target/aarch64-apple-darwin/release/bundle/`。第一次打开未签名应用时，如果系统拦截，在「系统设置 → 隐私与安全性」里允许，或对 `.app` 执行 `xattr -dr com.apple.quarantine`。
+## 快速体验
 
-只检查前端、不启动窗口：
+安装 [Node.js](https://nodejs.org/)（22.12 或更新的 LTS 版本）和 [pnpm](https://pnpm.io/)，然后在项目根目录运行：
 
 ```bash
-npm run typecheck
-npm test
-npm run build
-npm run dev:mock
+pnpm install --frozen-lockfile --node-linker=hoisted
+pnpm dev:mock
 ```
 
-`npm run dev:mock` 在浏览器里打开示例数据，地址是 `http://127.0.0.1:41773`。`npm run dev` 和 `npm run tauri dev` 默认走真实连接。
+在浏览器打开 [http://127.0.0.1:41773](http://127.0.0.1:41773)。Windows PowerShell 中可用以下命令启动示例模式：
 
-## 登录
+```powershell
+$env:VITE_DATA_MODE = "mock"
+pnpm dev
+```
 
-1. 服务器地址填完整 URL，可以带非标准端口。末尾的 `/` 会被去掉，然后请求 `{地址}/config.json`，从中读取 `ACCOUNTS_URL`、`COLLABORATOR_URL`，以及可选的 `FILES_URL`、`UPLOAD_URL`。这和网页端一致。
-2. 工作区填 `/workbench/` 后面的 slug，不是显示名「公司」。
-3. 邮箱密码或访问令牌都可以。密码只用于这一次登录，不会写入磁盘或钥匙串。
-4. 登录成功后，账号令牌、服务器地址、slug 和邮箱写入 macOS 钥匙串，服务名是 `Huly Desk`。下次可以留空令牌，直接用钥匙串里的那一个。
-5. 勾选「使用示例数据」会进入虚构的 CORE / APP / CS 项目，不发包。
+## 开发桌面端
 
-断开连接会删掉钥匙串里的会话。自定义 CA 的 PEM 存在另一条钥匙串记录里，断开连接不会清掉它。
+安装 Rust stable（至少 1.90）及 [Tauri 的平台开发依赖](https://v2.tauri.app/start/prerequisites/)。macOS 需要 Xcode Command Line Tools。启动桌面开发窗口：
 
-## 连接失败时
+```bash
+pnpm tauri dev
+```
 
-- **读不到 config.json**：地址或端口不对，或者这台 Mac 访问不到实例。先在浏览器打开 `https://lm.all666.cn:666/config.json`。
-- **证书不受信任**：默认只信任系统里的公开 CA。自签或内网 CA 时，把 PEM 贴进登录页的「证书选项」。探测 `config.json` 会使用这张证书；如果勾了「探测时信任此地址的证书」，只对这一次探测请求放宽校验，不会关闭整个系统的校验。窗口里的 WebSocket 仍走系统信任库，所以同一张 CA 还要导入「钥匙串访问」并设为始终信任，否则登录会在探测成功后的连接阶段失败。
-- **找不到工作区**：slug 写错了。不要填显示名。
-- **登录没有通过**：邮箱、密码或令牌不对。令牌过期后需要重新颁发。应用不会把口令或令牌打进日志。
-- **config.json 里的账户或协作地址是内网主机名**：客户端所在的网络也必须能解析并访问这些地址，不能只通前端这一个端口。
-- **钥匙串写入失败**：令牌只留在本次进程内存里，退出即丢。macOS 上如果弹出钥匙串授权，需要允许。
+在 Mac 上生成同时兼容 Apple Silicon 和 Intel 的安装包：
 
-## 第一期范围
+```bash
+rustup target add aarch64-apple-darwin x86_64-apple-darwin
+pnpm tauri build --target universal-apple-darwin --bundles dmg
+```
 
-可以做：连接、项目列表、任务列表（状态 / 指派人 / 优先级 / 标签 / 标题和编号搜索 / 分组）、看板拖拽改状态、任务详情编辑（标题、描述、状态、指派人、优先级、标签、里程碑、组件、截止日期）、子任务列表、新建任务、命令面板和快捷键（⌘K 或 Ctrl+K，C 新建，/ 搜索，Esc 关闭）。
+`.dmg` 位于 `src-tauri/target/universal-apple-darwin/release/bundle/dmg/`。
 
-示例数据里可以发评论，只留在内存。真实连接可以尝试读取 `chunter:class:ChatMessage`，但**不能写评论**。官方示例没有评论脚本，消息正文是协同文档，字段还没在这台实例上确认。
+## 连接 Huly
 
-不做：文档、通知收件箱、附件、模板、工时上报、关联任务、实时推送。侧栏里的「通知」「文档」会说明这一点。
+1. 在登录页的「高级设置」中填写 Huly 的入口地址，例如 `https://huly.example.com`。如果服务使用非默认端口，请保留端口号。无需填写具体的任务或工作区页面路径。
+2. 使用邮箱和密码，或使用实例签发的 API 令牌登录。
+3. 从列表中选择你有权访问的工作区。桌面端使用系统凭据存储保存登录会话，不保存密码；退出登录会清除该会话。Linux 如需跨重启保留登录，需要系统提供 Secret Service。
 
-## 数据从哪来
+如果无法连接，先检查实例是否可访问，以及入口地址的 `/config.json` 是否能正常读取。自建实例的账户服务和协作服务也必须能从客户端访问。若使用私有 CA，请确保系统信任该证书；若看不到某个工作区，请在 Huly 网页端确认账号权限。
 
-| | 示例模式 | 真实连接 |
-| --- | --- | --- |
-| 项目、任务、人员 | `src/data/mock` 里的虚构数据 | `@hcengineering/api-client` 的 `connect` + `findAll` / `updateDoc` / `addCollection`。顶层任务的 `attachedTo` 是 `tracker:ids:NoParent`，父任务只看 `parents` |
-| 描述 | 普通字符串 | `fetchMarkup` / `MarkupContent`，和官方 `issue-create.ts` 一样 |
-| 状态列 | 固定的待办池 / 待办 / 进行中 / 完成 | 项目 `ProjectType.statuses`，类别来自状态文档 |
-| 评论 | 可写 | 只读尝试，写入明确拒绝 |
-| 令牌 | 不保存 | macOS 钥匙串 |
+## 开发检查
 
-`npm run dev:mock` 或登录页勾选示例数据时走 mock。其余情况，包括 `npm run tauri dev` 和打包后的应用，默认走真实客户端。
+```bash
+pnpm typecheck
+pnpm test
+pnpm build
+```
+
+## 发布版本
+
+正式版本从 `1.0.0` 开始。在需要发布的提交上创建并推送 `vX.Y.Z` 标签，例如：
+
+```bash
+git tag -a v1.0.0 -m "Huly Desk v1.0.0"
+git push origin v1.0.0
+```
+
+GitHub Actions 会使用标签中的版本号并行构建 macOS、Windows 和 Linux。三端全部成功后，工作流会创建 GitHub Release 并附上安装包和 `SHA256SUMS.txt`；在 Actions 页面手动运行工作流只生成构建产物，不发布版本。当前安装包未使用开发者证书签名，macOS 版本也未公证。
+
+欢迎提交 Issue 或 Pull Request。报告连接或界面问题时，请注明平台、Huly 版本和复现步骤，并隐去令牌、密码及私有服务器地址。
+
+图标来自 [Huly 上游项目](https://github.com/hcengineering/platform/blob/main/dev/prod/public/huly/favicon.svg)。Huly Desk 是独立客户端，并非 Huly 官方应用。
