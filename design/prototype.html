@@ -1,0 +1,661 @@
+<!DOCTYPE html>
+<html lang="zh-Hans">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Huly Desk 设计原型（示例数据）</title>
+<style>
+  :root {
+    --bg-desk: #c9d3e0;
+    --window: #f4f5f7;
+    --panel: #ffffff;
+    --line: #dfe1e6;
+    --line-strong: #c1c7d0;
+    --text: #172b4d;
+    --muted: #5e6c84;
+    --subtle: #7a869a;
+    --accent: #1868db;
+    --accent-hover: #1558b8;
+    --accent-soft: #deebff;
+    --danger: #de350b;
+    --success: #00875a;
+    --warn: #ff8b00;
+    --urgent: #ff5630;
+    --high: #ff8b00;
+    --medium: #0052cc;
+    --low: #6554c0;
+    --shadow: 0 18px 50px rgba(23, 43, 77, .22);
+    --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    font-family: var(--sans);
+    color: var(--text);
+    background:
+      radial-gradient(1200px 600px at 20% 0%, #e8eef6, transparent 55%),
+      linear-gradient(180deg, #d7dee8, var(--bg-desk));
+    min-height: 100%;
+  }
+  .desk { min-height: 100%; padding: 28px 24px 40px; display: flex; flex-direction: column; align-items: center; }
+  .page-note {
+    width: min(1280px, 100%);
+    margin-bottom: 12px;
+    font-size: 12px;
+    color: #3b4a63;
+    background: #fff7e6;
+    border: 1px solid #ffd666;
+    border-radius: 8px;
+    padding: 8px 12px;
+  }
+  .window {
+    width: min(1280px, 100%);
+    height: min(820px, calc(100vh - 90px));
+    background: var(--window);
+    border-radius: 12px;
+    box-shadow: var(--shadow);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    border: 1px solid rgba(255,255,255,.6);
+  }
+  .titlebar {
+    height: 44px;
+    background: linear-gradient(#f7f8fa, #eef0f3);
+    border-bottom: 1px solid var(--line);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 0 14px;
+    flex: none;
+  }
+  .traffic { display: flex; gap: 7px; }
+  .dot { width: 12px; height: 12px; border-radius: 50%; }
+  .dot.r { background: #ff5f57; }
+  .dot.y { background: #febc2e; }
+  .dot.g { background: #28c840; }
+  .win-title { font-size: 13px; font-weight: 600; color: var(--text); }
+  .win-sub { font-size: 12px; color: var(--muted); margin-left: auto; }
+  .body { flex: 1; min-height: 0; display: flex; }
+  /* login */
+  .login {
+    flex: 1;
+    display: grid;
+    place-items: center;
+    background: linear-gradient(180deg, #f7f8fa, #eef2f7);
+  }
+  .login-card {
+    width: 440px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 28px 28px 22px;
+    box-shadow: 0 8px 24px rgba(23,43,77,.06);
+  }
+  .login-card h1 { margin: 0 0 6px; font-size: 22px; letter-spacing: -.02em; }
+  .login-card p.lead { margin: 0 0 18px; color: var(--muted); font-size: 13px; line-height: 1.5; }
+  label { display: block; font-size: 12px; font-weight: 600; margin: 12px 0 6px; }
+  input, select, textarea {
+    width: 100%;
+    border: 1px solid var(--line-strong);
+    border-radius: 6px;
+    padding: 8px 10px;
+    font: inherit;
+    font-size: 13px;
+    color: var(--text);
+    background: #fff;
+  }
+  input:focus, select:focus, textarea:focus { outline: 2px solid #b3d4ff; border-color: var(--accent); }
+  .hint { font-size: 11px; color: var(--subtle); margin-top: 5px; line-height: 1.45; }
+  .tabs { display: flex; gap: 0; margin: 8px 0 4px; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+  .tab {
+    flex: 1; border: 0; background: #f4f5f7; padding: 8px; font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; color: var(--muted);
+  }
+  .tab.on { background: #fff; color: var(--text); }
+  .row-actions { display: flex; gap: 8px; margin-top: 18px; }
+  button { font-family: inherit; cursor: pointer; }
+  .btn {
+    border: 1px solid var(--line-strong);
+    background: #fff;
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+  }
+  .btn:hover { background: #f4f5f7; }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn.primary:hover { background: var(--accent-hover); }
+  .btn.ghost { background: transparent; border-color: transparent; color: var(--muted); }
+  /* app layout */
+  .sidebar {
+    width: 232px;
+    background: #f0f1f4;
+    border-right: 1px solid var(--line);
+    display: flex;
+    flex-direction: column;
+    flex: none;
+  }
+  .side-brand { padding: 14px 14px 8px; font-size: 13px; font-weight: 700; }
+  .side-search { padding: 0 12px 10px; }
+  .nav { padding: 4px 8px; }
+  .nav-item, .proj-item {
+    display: flex; align-items: center; gap: 8px;
+    width: 100%; text-align: left;
+    border: 0; background: transparent;
+    border-radius: 6px; padding: 7px 8px;
+    font-size: 13px; color: var(--text);
+  }
+  .nav-item:hover, .proj-item:hover { background: #e6e8eb; }
+  .nav-item.on, .proj-item.on { background: #dce7f7; color: #0c3b8c; font-weight: 600; }
+  .count { margin-left: auto; background: #dfe1e6; color: var(--muted); font-size: 11px; border-radius: 10px; padding: 1px 7px; }
+  .nav-item.on .count { background: #b3d4ff; color: #0c3b8c; }
+  .sec { font-size: 11px; font-weight: 700; color: var(--subtle); letter-spacing: .04em; padding: 14px 16px 6px; text-transform: uppercase; }
+  .main { flex: 1; min-width: 0; display: flex; flex-direction: column; background: var(--panel); }
+  .toolbar {
+    height: 52px; border-bottom: 1px solid var(--line);
+    display: flex; align-items: center; gap: 8px; padding: 0 16px; flex: none;
+  }
+  .h2 { font-size: 16px; font-weight: 700; margin-right: 8px; }
+  .seg { display: flex; border: 1px solid var(--line-strong); border-radius: 6px; overflow: hidden; }
+  .seg button { border: 0; background: #fff; padding: 6px 10px; font-size: 12px; font-weight: 600; color: var(--muted); }
+  .seg button.on { background: #ebecf0; color: var(--text); }
+  .spacer { flex: 1; }
+  .filters { display: flex; gap: 6px; padding: 10px 16px; border-bottom: 1px solid var(--line); flex: none; flex-wrap: wrap; align-items: center; }
+  .chip { border: 1px solid var(--line-strong); background: #fff; border-radius: 14px; padding: 4px 10px; font-size: 12px; color: var(--muted); }
+  .chip.on { background: var(--accent-soft); border-color: #b3d4ff; color: #0c3b8c; font-weight: 600; }
+  .content { flex: 1; min-height: 0; display: flex; }
+  .list-wrap { flex: 1; overflow: auto; }
+  table.issues { width: 100%; border-collapse: collapse; font-size: 13px; }
+  table.issues th { text-align: left; font-size: 11px; color: var(--subtle); font-weight: 700; padding: 8px 12px; border-bottom: 1px solid var(--line); background: #fafbfc; position: sticky; top: 0; }
+  table.issues td { padding: 9px 12px; border-bottom: 1px solid #f0f1f4; vertical-align: middle; white-space: nowrap; }
+  table.issues td:nth-child(2) { white-space: normal; }
+  table.issues tr { cursor: pointer; }
+  table.issues tr:hover td { background: #f4f8ff; }
+  table.issues tr.sel td { background: #deebff; }
+  .key { color: var(--muted); font-variant-numeric: tabular-nums; font-weight: 600; }
+  .prio, .st { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600; }
+  .dotp { width: 8px; height: 8px; border-radius: 50%; }
+  .group-h { padding: 8px 12px; font-size: 12px; font-weight: 700; background: #f7f8fa; border-bottom: 1px solid var(--line); color: var(--muted); }
+  /* board */
+  .board { flex: 1; overflow: auto; display: flex; gap: 12px; padding: 14px; background: #f7f8fa; }
+  .col { width: 280px; flex: none; background: #ebecf0; border-radius: 8px; padding: 8px; display: flex; flex-direction: column; min-height: 100%; }
+  .col-h { display: flex; align-items: center; gap: 8px; padding: 6px 6px 10px; font-size: 12px; font-weight: 700; }
+  .card {
+    background: #fff; border-radius: 7px; padding: 10px; margin-bottom: 8px;
+    box-shadow: 0 1px 2px rgba(23,43,77,.08); border: 1px solid #e9ebf0; cursor: grab;
+  }
+  .card:active { cursor: grabbing; }
+  .card .t { font-size: 13px; font-weight: 600; margin: 4px 0 8px; line-height: 1.35; }
+  .meta { display: flex; justify-content: space-between; align-items: center; font-size: 11px; color: var(--muted); }
+  .av { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font-size: 10px; font-weight: 700; color: #fff; }
+  /* detail */
+  .detail {
+    width: 560px; border-left: 1px solid var(--line); background: #fff;
+    display: none; flex-direction: column; min-width: 0;
+  }
+  .detail.open { display: flex; }
+  .detail.wide { width: 56%; }
+  .d-head { padding: 12px 16px; border-bottom: 1px solid var(--line); display: flex; align-items: flex-start; gap: 8px; }
+  .d-body { flex: 1; overflow: auto; display: flex; }
+  .d-main { flex: 1; padding: 16px; min-width: 0; }
+  .d-side { width: 200px; flex-shrink:0; border-left: 1px solid var(--line); padding: 12px; background: #fafbfc; flex: none; }
+  .field { margin-bottom: 12px; }
+  .field .k { font-size: 11px; color: var(--subtle); font-weight: 700; margin-bottom: 4px; }
+  .field .v { font-size: 13px; }
+  .tag { display: inline-block; background: #e3fcef; color: #006644; border-radius: 3px; padding: 1px 6px; font-size: 11px; font-weight: 700; margin-right: 4px; }
+  .tag.b { background: #deebff; color: #0747a6; }
+  .tag.p { background: #f3eaff; color: #5243aa; }
+  .sub { list-style: none; margin: 0; padding: 0; }
+  .sub li, .sub li span { display: inline !important; white-space: normal !important; }
+  .sub li { display: flex; gap: 8px; align-items: center; padding: 6px 0; border-bottom: 1px solid #f0f1f4; font-size: 13px; flex-wrap: nowrap; }
+  .sub li span, .sub li { min-width: 0; }
+  .sub li { white-space: normal; align-items: flex-start; }
+  .comment { padding: 10px 0; border-bottom: 1px solid #f0f1f4; }
+  .comment .who { font-size: 12px; font-weight: 700; }
+  .comment .when { color: var(--subtle); font-weight: 500; margin-left: 6px; }
+  .comment .txt { font-size: 13px; margin-top: 4px; line-height: 1.45; }
+  h3.block { margin: 18px 0 8px; font-size: 13px; }
+  /* modal / palette */
+  .overlay { position: absolute; inset: 44px 0 0; background: rgba(9,30,66,.42); display: none; align-items: flex-start; justify-content: center; padding-top: 80px; }
+  .overlay.show { display: flex; }
+  .modal, .palette {
+    width: 640px; background: #fff; border-radius: 10px; box-shadow: 0 24px 64px rgba(9,30,66,.35);
+    overflow: hidden;
+  }
+  .modal { padding: 18px 20px 16px; }
+  .modal h2 { margin: 0 0 12px; font-size: 16px; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
+  .palette input { border: 0; border-bottom: 1px solid var(--line); border-radius: 0; padding: 14px 16px; font-size: 15px; }
+  .cmd { padding: 6px; }
+  .cmd button { width: 100%; text-align: left; border: 0; background: transparent; border-radius: 6px; padding: 8px 10px; font-size: 13px; display: flex; justify-content: space-between; }
+  .cmd button:hover, .cmd button.hi { background: var(--accent-soft); }
+  .kbd { font-size: 11px; color: var(--subtle); background: #f4f5f7; border: 1px solid var(--line); border-radius: 4px; padding: 1px 5px; }
+  .toast {
+    position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%);
+    background: #172b4d; color: #fff; font-size: 12px; padding: 8px 14px; border-radius: 8px;
+    display: none; z-index: 20;
+  }
+  .toast.show { display: block; }
+  .empty { padding: 40px; color: var(--muted); font-size: 13px; }
+  .desc { font-size: 13px; line-height: 1.55; color: var(--text); }
+  .file { font-size: 13px; display: flex; gap: 8px; align-items: center; padding: 6px 0; }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<div class="desk">
+  <div class="page-note">这是设计用的可点击原型，界面中的任务、成员和服务器状态全部是<strong>示例数据</strong>，不会登录或写入自建实例。快捷键：⌘K / Ctrl+K 命令面板，C 新建任务，/ 聚焦搜索，Esc 关闭。</div>
+  <div class="window" id="window">
+    <div class="titlebar">
+      <div class="traffic"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span></div>
+      <div class="win-title">Huly Desk</div>
+      <div class="win-sub" id="winSub">示例原型 · 未连接真实服务器</div>
+    </div>
+    <div class="body" id="app"></div>
+    <div class="overlay" id="overlay"></div>
+    <div class="toast" id="toast"></div>
+  </div>
+</div>
+<script>
+const SAMPLE_NOTE = '示例数据';
+const PEOPLE = [
+  {id:'zhang', name:'张敏', initials:'张', color:'#0052cc'},
+  {id:'li', name:'李强', initials:'李', color:'#00875a'},
+  {id:'wang', name:'王晓', initials:'王', color:'#6554c0'},
+  {id:'bill', name:'Bill Murphy', initials:'B', color:'#172b4d'}
+];
+const PROJECTS = [
+  {id:'core', key:'CORE', name:'核心平台', count:5},
+  {id:'app', key:'APP', name:'移动端', count:2},
+  {id:'cs', key:'CS', name:'客户成功', count:1}
+];
+const ISSUES = [
+  {id:'CORE-128', project:'core', title:'登录页在弱网下会重复提交', status:'inprogress', priority:'high', assignee:'zhang', labels:['缺陷'], milestone:'v0.2 发布', component:'账户', due:'2026-11-21', estimate:'4h', desc:'用户在弱网点击「登录」后，偶发重复请求。需要在客户端加锁，并在服务端做幂等。', parent:null, sub:['CORE-141','CORE-142'], comments:[{who:'李强', when:'昨天 18:21', text:'可以先用按钮 disable，我来补服务端 token。'}], files:['复现录屏.mov']},
+  {id:'CORE-129', project:'core', title:'看板拖拽后未同步状态', status:'todo', priority:'urgent', assignee:'li', labels:['缺陷','体验'], milestone:'v0.2 发布', component:'任务', due:'2026-11-20', estimate:'6h', desc:'拖到「完成」列后刷新会回到原列。', parent:null, sub:[], comments:[], files:[]},
+  {id:'CORE-130', project:'core', title:'为任务详情补充截止日期字段', status:'todo', priority:'medium', assignee:'wang', labels:['功能'], milestone:'v0.2 发布', component:'任务', due:'2026-11-25', estimate:'3h', desc:'右侧属性栏增加截止日期，支持清空。', parent:null, sub:[], comments:[], files:[]},
+  {id:'CORE-131', project:'core', title:'整理自建服务器连接文档', status:'backlog', priority:'low', assignee:null, labels:['文档'], milestone:'', component:'平台', due:'', estimate:'2h', desc:'说明非标准端口、工作区 slug 与证书。', parent:null, sub:[], comments:[], files:['连接说明草稿.md']},
+  {id:'CORE-141', project:'core', title:'登录按钮增加提交锁', status:'todo', priority:'high', assignee:'zhang', labels:['缺陷'], milestone:'v0.2 发布', component:'账户', due:'2026-11-21', estimate:'2h', desc:'父任务 CORE-128 的子任务。', parent:'CORE-128', sub:[], comments:[], files:[]},
+  {id:'CORE-142', project:'core', title:'登录接口增加幂等键', status:'backlog', priority:'high', assignee:'li', labels:['缺陷'], milestone:'v0.2 发布', component:'账户', due:'2026-11-22', estimate:'3h', desc:'父任务 CORE-128 的子任务。', parent:'CORE-128', sub:[], comments:[], files:[]},
+  {id:'APP-18', project:'app', title:'iOS 通知红点未清除', status:'inprogress', priority:'medium', assignee:'bill', labels:['缺陷'], milestone:'', component:'通知', due:'2026-11-24', estimate:'3h', desc:'读完全部通知后，图标红点仍在。', parent:null, sub:[], comments:[{who:'Bill Murphy', when:'今天 09:10', text:'只在前台复现，后台切回正常。'}], files:[]},
+  {id:'CS-7', project:'cs', title:'给客户准备季度回顾模板', status:'done', priority:'low', assignee:'wang', labels:['文档'], milestone:'', component:'模板', due:'2026-11-10', estimate:'5h', desc:'已完成初稿。', parent:null, sub:[], comments:[], files:['Q4回顾模板.docx']}
+];
+const NOTIFS = [
+  {title:'李强评论了 CORE-128', detail:'可以先用按钮 disable…', time:'昨天 18:21', unread:true},
+  {title:'CORE-129 已指派给你', detail:'优先级：紧急', time:'昨天 16:02', unread:true},
+  {title:'王晓更新了 CS-7', detail:'状态变为已完成', time:'周一 11:04', unread:false}
+];
+const DOCS = [
+  {space:'产品', title:'Huly Desk 产品原则（示例）', updated:'今天'},
+  {space:'产品', title:'连接自建实例说明（示例）', updated:'昨天'},
+  {space:'工程', title:'API 对照备忘（示例）', updated:'上周五'}
+];
+const STATUS = {
+  backlog: {label:'待办池', color:'#6b778c'},
+  todo: {label:'待办', color:'#0052cc'},
+  inprogress: {label:'进行中', color:'#ff8b00'},
+  done: {label:'完成', color:'#00875a'}
+};
+const PRIORITY = {
+  urgent: {label:'紧急', color:'#ff5630'},
+  high: {label:'高', color:'#ff8b00'},
+  medium: {label:'中', color:'#0052cc'},
+  low: {label:'低', color:'#6554c0'},
+  none: {label:'无', color:'#6b778c'}
+};
+
+const state = {
+  route: 'login',
+  view: 'list',
+  project: 'core',
+  nav: 'project',
+  selected: 'CORE-128',
+  detailOpen: false,
+  detailWide: false,
+  modal: null, // 'create' | 'palette'
+  authTab: 'password',
+  query: '',
+  statusFilter: 'all',
+  toast: '',
+  server: 'https://lm.all666.cn:666/',
+  workspace: 'gongsi',
+  email: 'bill@example.com'
+};
+
+function person(id){ return PEOPLE.find(p=>p.id===id); }
+function av(id){
+  const p = person(id);
+  if(!p) return '<span class="av" style="background:#dfe1e6;color:#5e6c84">?</span>';
+  return `<span class="av" style="background:${p.color}" title="${p.name}">${p.initials}</span>`;
+}
+function prio(k){ const p=PRIORITY[k]||PRIORITY.none; return `<span class="prio"><span class="dotp" style="background:${p.color}"></span>${p.label}</span>`; }
+function st(k){ const s=STATUS[k]; return `<span class="st"><span class="dotp" style="background:${s.color}"></span>${s.label}</span>`; }
+function toast(msg){ state.toast=msg; const el=document.getElementById('toast'); el.textContent=msg; el.classList.add('show'); setTimeout(()=>{el.classList.remove('show');}, 2400); }
+function visibleIssues(){
+  let rows = ISSUES.filter(i=>!i.parent);
+  if(state.nav==='mine') rows = ISSUES.filter(i=>i.assignee==='bill' || i.assignee==='zhang');
+  if(state.nav==='project') rows = rows.filter(i=>i.project===state.project);
+  if(state.statusFilter!=='all') rows = rows.filter(i=>i.status===state.statusFilter);
+  if(state.query) {
+    const q=state.query.toLowerCase();
+    rows = rows.filter(i=> (i.title+i.id+i.labels.join('')).toLowerCase().includes(q));
+  }
+  return rows;
+}
+function issueById(id){ return ISSUES.find(i=>i.id===id); }
+
+function renderLogin(){
+  return `<div class="login">
+    <div class="login-card">
+      <h1>连接到 Huly</h1>
+      <p class="lead">以下为示例填写，确认后不会向服务器发送账号或令牌。</p>
+      <label>服务器地址</label>
+      <input id="server" value="${state.server}" />
+      <div class="hint">支持非标准端口。将读取该地址下的 <code>/config.json</code> 以获取账户、协作与附件端点。</div>
+      <label>工作区标识（URL slug，不是显示名）</label>
+      <input id="workspace" value="${state.workspace}" />
+      <div class="hint">若网页里工作区显示为「公司」，请填写地址 <code>/workbench/</code> 后面的那段标识。当前示例用 <code>gongsi</code>，需向 Bill 确认真实 slug。</div>
+      <div class="tabs">
+        <button class="tab ${state.authTab==='password'?'on':''}" data-act="auth-password">邮箱密码</button>
+        <button class="tab ${state.authTab==='token'?'on':''}" data-act="auth-token">访问令牌</button>
+      </div>
+      <div class="${state.authTab==='password'?'':'hidden'}">
+        <label>邮箱</label><input id="email" value="${state.email}" />
+        <label>密码</label><input type="password" value="••••••••" readonly />
+        <div class="hint">原型中的密码仅为占位，不会读取或保存。</div>
+      </div>
+      <div class="${state.authTab==='token'?'':'hidden'}">
+        <label>令牌</label><input type="password" value="••••••••••••••••" readonly />
+        <div class="hint">正式产品会把令牌写入 macOS 钥匙串，而不是明文文件。</div>
+      </div>
+      <div class="row-actions">
+        <button class="btn primary" data-act="enter">进入工作区（示例）</button>
+        <button class="btn ghost" data-act="probe">探测配置（示例）</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+function sidebar(){
+  const mineCount = ISSUES.filter(i=>i.assignee==='bill').length;
+  return `<aside class="sidebar">
+    <div class="side-brand">工作区 · 公司 <span style="font-weight:500;color:var(--muted);font-size:11px">（示例）</span></div>
+    <div class="side-search"><input id="quick" placeholder="搜索或按 ⌘K" data-act-focus="palette" /></div>
+    <nav class="nav">
+      <button class="nav-item ${state.nav==='mine'?'on':''}" data-act="nav-mine">我的任务 <span class="count">${mineCount}</span></button>
+      <button class="nav-item ${state.nav==='notifs'?'on':''}" data-act="nav-notifs">通知 <span class="count">2</span></button>
+      <button class="nav-item ${state.nav==='docs'?'on':''}" data-act="nav-docs">文档</button>
+    </nav>
+    <div class="sec">项目</div>
+    <div class="nav">
+      ${PROJECTS.map(p=>`<button class="proj-item ${state.nav==='project'&&state.project===p.id?'on':''}" data-act="proj" data-id="${p.id}">${p.key}　${p.name} <span class="count">${p.count}</span></button>`).join('')}
+    </div>
+    <div style="margin-top:auto;padding:12px 14px;font-size:11px;color:var(--subtle);border-top:1px solid var(--line)">已用示例账户登录<br>Bill Murphy</div>
+  </aside>`;
+}
+
+function toolbar(title){
+  return `<div class="toolbar">
+    <div class="h2">${title}</div>
+    ${state.nav==='project'||state.nav==='mine' ? `<div class="seg">
+      <button class="${state.view==='list'?'on':''}" data-act="view-list">列表</button>
+      <button class="${state.view==='board'?'on':''}" data-act="view-board">看板</button>
+    </div>`:''}
+    <div class="spacer"></div>
+    <button class="btn" data-act="palette">命令面板 <span class="kbd">⌘K</span></button>
+    <button class="btn primary" data-act="create">创建任务</button>
+  </div>`;
+}
+
+function filters(){
+  const chips = [['all','全部'],['todo','待办'],['inprogress','进行中'],['done','完成'],['backlog','待办池']];
+  return `<div class="filters">
+    <input style="width:220px" id="search" placeholder="搜索任务标题或编号" value="${state.query}" />
+    ${chips.map(([k,l])=>`<button class="chip ${state.statusFilter===k?'on':''}" data-act="filter" data-id="${k}">${l}</button>`).join('')}
+    <span class="hint" style="margin:0">分组：按状态</span>
+  </div>`;
+}
+
+function listView(){
+  const rows = visibleIssues();
+  const groups = ['inprogress','todo','backlog','done'];
+  let html = '<div class="list-wrap">';
+  for(const g of groups){
+    const items = rows.filter(i=>i.status===g);
+    if(!items.length) continue;
+    html += `<div class="group-h">${STATUS[g].label} · ${items.length}</div><table class="issues"><thead><tr><th>编号</th><th>标题</th><th>优先级</th><th>指派人</th><th>截止日期</th></tr></thead><tbody>`;
+    for(const i of items){
+      html += `<tr class="${state.selected===i.id?'sel':''}" data-act="open" data-id="${i.id}"><td class="key">${i.id}</td><td>${i.title}</td><td>${prio(i.priority)}</td><td>${i.assignee?av(i.assignee)+' '+person(i.assignee).name:'未指派'}</td><td>${i.due||'—'}</td></tr>`;
+    }
+    html += '</tbody></table>';
+  }
+  if(!rows.length) html += '<div class="empty">没有符合筛选条件的示例任务。</div>';
+  html += '</div>';
+  return html;
+}
+
+function boardView(){
+  const rows = visibleIssues();
+  const cols = ['backlog','todo','inprogress','done'];
+  return `<div class="board">${cols.map(c=>{
+    const items = rows.filter(i=>i.status===c);
+    return `<div class="col" data-col="${c}" ondragover="event.preventDefault()" ondrop="dropCard(event,'${c}')">
+      <div class="col-h">${STATUS[c].label} <span class="count">${items.length}</span></div>
+      ${items.map(i=>`<div class="card" draggable="true" ondragstart="dragCard(event,'${i.id}')" data-act="open" data-id="${i.id}">
+        <div class="key">${i.id}</div>
+        <div class="t">${i.title}</div>
+        <div class="meta">${prio(i.priority)} ${av(i.assignee)}</div>
+      </div>`).join('')}
+    </div>`;
+  }).join('')}</div>`;
+}
+
+function detail(){
+  const i = issueById(state.selected);
+  if(!i || !(state.nav==='project'||state.nav==='mine') || !state.detailOpen) return '<aside class="detail"></aside>';
+  const subs = (i.sub||[]).map(id=>issueById(id)).filter(Boolean);
+  return `<aside class="detail open ${state.detailWide?'wide':''}">
+    <div class="d-head">
+      <div>
+        <div class="key">${i.id} · ${SAMPLE_NOTE}</div>
+        <div style="font-size:16px;font-weight:700;margin-top:4px">${i.title}</div>
+      </div>
+      <div class="spacer"></div>
+      <button class="btn" data-act="widen">${state.detailWide?'收起':'加宽'}</button>
+      <button class="btn ghost" data-act="close-detail">关闭</button>
+    </div>
+    <div class="d-body">
+      <div class="d-main">
+        <h3 class="block" style="margin-top:0">描述</h3>
+        <div class="desc">${i.desc}</div>
+        <h3 class="block">子任务</h3>
+        ${subs.length?`<ul class="sub">${subs.map(s=>`<li><input type="checkbox" disabled ${s.status==='done'?'checked':''}/> <span class="key">${s.id}</span>&nbsp;${s.title}&nbsp;${st(s.status)}</li>`).join('')}</ul>`:'<div class="hint">此示例任务没有子任务。</div>'}
+        <h3 class="block">附件</h3>
+        ${i.files.length?i.files.map(f=>`<div class="file">📄 ${f} <span class="hint">（示例文件名）</span></div>`).join(''):'<div class="hint">没有示例附件。</div>'}
+        <h3 class="block">评论</h3>
+        ${i.comments.length?i.comments.map(c=>`<div class="comment"><span class="who">${c.who}</span><span class="when">${c.when}</span><div class="txt">${c.text}</div></div>`).join(''):'<div class="hint">暂无示例评论。</div>'}
+        <label>添加评论（示例，不会发送）</label>
+        <textarea rows="2" placeholder="写一条评论…"></textarea>
+        <div class="row-actions"><button class="btn" data-act="fake-comment">发表（示例）</button></div>
+        <h3 class="block">活动</h3>
+        <div class="hint">昨天 · 李强将优先级改为「高」<br>周一 · 张敏创建了此任务</div>
+      </div>
+      <div class="d-side">
+        <div class="field"><div class="k">状态</div><div class="v">${st(i.status)}</div></div>
+        <div class="field"><div class="k">指派人</div><div class="v">${i.assignee?av(i.assignee)+' '+person(i.assignee).name:'未指派'}</div></div>
+        <div class="field"><div class="k">优先级</div><div class="v">${prio(i.priority)}</div></div>
+        <div class="field"><div class="k">标签</div><div class="v">${i.labels.map((t,idx)=>`<span class="tag ${idx%3===1?'b':idx%3===2?'p':''}">${t}</span>`).join('')||'—'}</div></div>
+        <div class="field"><div class="k">里程碑</div><div class="v">${i.milestone||'—'}</div></div>
+        <div class="field"><div class="k">组件</div><div class="v">${i.component||'—'}</div></div>
+        <div class="field"><div class="k">截止日期</div><div class="v">${i.due||'—'}</div></div>
+        <div class="field"><div class="k">估算</div><div class="v">${i.estimate||'—'}</div></div>
+      </div>
+    </div>
+  </aside>`;
+}
+
+function notifView(){
+  return `<div class="list-wrap" style="padding:8px 0">${NOTIFS.map(n=>`<div style="padding:12px 18px;border-bottom:1px solid var(--line);background:${n.unread?'#f4f8ff':'#fff'}">
+    <div style="font-weight:700;font-size:13px">${n.title} ${n.unread?'<span class="tag b">未读</span>':''}</div>
+    <div class="hint">${n.detail} · ${n.time}</div>
+  </div>`).join('')}<div class="empty">以上为示例通知，未连接真实收件箱。</div></div>`;
+}
+function docsView(){
+  return `<div class="list-wrap"><table class="issues"><thead><tr><th>空间</th><th>标题</th><th>更新</th></tr></thead><tbody>
+    ${DOCS.map(d=>`<tr><td>${d.space}</td><td>${d.title}</td><td>${d.updated}</td></tr>`).join('')}
+  </tbody></table><div class="empty">文档列表为示例，正式版将读取 document.class.Document。</div></div>`;
+}
+
+function overlay(){
+  if(state.modal==='create'){
+    return `<div class="modal">
+      <h2>新建任务 <span class="hint">示例表单，不会写入服务器</span></h2>
+      <label>标题</label><input placeholder="简要描述要做的事" />
+      <div class="grid2">
+        <div><label>项目</label><select><option>CORE 核心平台</option><option>APP 移动端</option><option>CS 客户成功</option></select></div>
+        <div><label>状态</label><select><option>待办</option><option>进行中</option><option>待办池</option></select></div>
+        <div><label>优先级</label><select><option>中</option><option>紧急</option><option>高</option><option>低</option></select></div>
+        <div><label>指派人</label><select><option>张敏</option><option>李强</option><option>王晓</option><option>Bill Murphy</option><option>未指派</option></select></div>
+        <div><label>里程碑</label><select><option>v0.2 发布</option><option>无</option></select></div>
+        <div><label>组件</label><select><option>任务</option><option>账户</option><option>平台</option></select></div>
+      </div>
+      <label>描述</label><textarea rows="4" placeholder="支持 Markdown（正式版经 uploadMarkup 写入）"></textarea>
+      <div class="row-actions">
+        <button class="btn primary" data-act="fake-create">创建（示例）</button>
+        <button class="btn" data-act="close-modal">取消</button>
+      </div>
+    </div>`;
+  }
+  if(state.modal==='palette'){
+    return `<div class="palette">
+      <input id="cmdq" placeholder="输入命令或任务编号…" autofocus />
+      <div class="cmd">
+        <button data-act="create"><span>新建任务</span><span class="kbd">C</span></button>
+        <button data-act="view-board"><span>切换到看板</span></button>
+        <button data-act="view-list"><span>切换到列表</span></button>
+        <button data-act="nav-mine"><span>打开我的任务</span></button>
+        <button data-act="nav-notifs"><span>打开通知</span></button>
+        <button data-act="open" data-id="CORE-128"><span>转到 CORE-128 登录页重复提交</span></button>
+        <button data-act="logout"><span>断开连接（回到登录页）</span></button>
+      </div>
+    </div>`;
+  }
+  return '';
+}
+
+function render(){
+  const app = document.getElementById('app');
+  const overlayEl = document.getElementById('overlay');
+  document.getElementById('winSub').textContent = state.route==='login' ? '示例原型 · 未连接真实服务器' : '已连接示例工作区「公司」· 数据均为虚构';
+  if(state.route==='login'){
+    app.innerHTML = renderLogin();
+  } else {
+    let title = '任务';
+    if(state.nav==='mine') title='我的任务';
+    if(state.nav==='notifs') title='通知';
+    if(state.nav==='docs') title='文档';
+    if(state.nav==='project') title = PROJECTS.find(p=>p.id===state.project).name;
+    const showIssues = state.nav==='project'||state.nav==='mine';
+    app.innerHTML = `${sidebar()}<section class="main">${toolbar(title)}${showIssues?filters():''}<div class="content">${
+      state.nav==='notifs'?notifView():state.nav==='docs'?docsView():(state.view==='board'?boardView():listView())
+    }${detail()}</div></section>`;
+  }
+  if(state.modal){
+    overlayEl.classList.add('show');
+    overlayEl.innerHTML = overlay();
+    const cmd=document.getElementById('cmdq'); if(cmd) cmd.focus();
+  } else {
+    overlayEl.classList.remove('show');
+    overlayEl.innerHTML='';
+  }
+  bind();
+  syncHash();
+}
+
+function syncHash(){
+  if(state.route==='login'){ history.replaceState(null,'','#/login'); return; }
+  const q = new URLSearchParams();
+  q.set('nav', state.nav);
+  if(state.nav==='project') q.set('project', state.project);
+  q.set('view', state.view);
+  if(state.selected && state.detailOpen) q.set('issue', state.selected);
+  if(state.modal) q.set('modal', state.modal);
+  history.replaceState(null,'','#/app?'+q.toString());
+}
+
+function applyHash(){
+  const hash = location.hash || '#/login';
+  if(hash.startsWith('#/login')) { state.route='login'; return; }
+  state.route='app';
+  const q = new URLSearchParams(hash.split('?')[1]||'');
+  if(q.get('nav')) state.nav=q.get('nav');
+  if(q.get('project')) state.project=q.get('project');
+  if(q.get('view')) state.view=q.get('view');
+  if(q.get('issue')) { state.selected=q.get('issue'); state.detailOpen=true; }
+  if(q.get('wide')==='1') state.detailWide=true;
+  if(q.get('modal')) state.modal=q.get('modal');
+}
+
+function bind(){
+  document.querySelectorAll('[data-act]').forEach(el=>{
+    el.addEventListener('click', ev=>{
+      ev.stopPropagation();
+      const act=el.getAttribute('data-act');
+      const id=el.getAttribute('data-id');
+      handle(act,id,el);
+    });
+  });
+  const search=document.getElementById('search');
+  if(search){ search.addEventListener('input', e=>{ state.query=e.target.value; render(); search.focus(); const s=document.getElementById('search'); if(s){ s.value=state.query; s.focus(); s.setSelectionRange(state.query.length,state.query.length);} }); }
+}
+
+function handle(act,id){
+  if(act==='auth-password'){ state.authTab='password'; render(); }
+  if(act==='auth-token'){ state.authTab='token'; render(); }
+  if(act==='enter'){
+    state.server=document.getElementById('server').value;
+    state.workspace=document.getElementById('workspace').value;
+    state.route='app'; state.nav='project'; state.view='list'; state.detailOpen=true; toast('已进入示例工作区，未向服务器发送凭证'); render();
+  }
+  if(act==='probe'){ toast('原型不会真正请求服务器。正式版将读取 /config.json'); }
+  if(act==='logout'){ state.route='login'; state.modal=null; render(); }
+  if(act==='nav-mine'){ state.nav='mine'; state.view='list'; state.modal=null; render(); }
+  if(act==='nav-notifs'){ state.nav='notifs'; state.modal=null; state.detailOpen=false; render(); }
+  if(act==='nav-docs'){ state.nav='docs'; state.modal=null; state.detailOpen=false; render(); }
+  if(act==='proj'){ state.nav='project'; state.project=id; state.modal=null; state.detailOpen=true; render(); }
+  if(act==='view-list'){ state.view='list'; state.modal=null; render(); }
+  if(act==='view-board'){ state.view='board'; state.modal=null; render(); }
+  if(act==='filter'){ state.statusFilter=id; render(); }
+  if(act==='open'){ state.selected=id; state.detailOpen=true; if(state.nav==='notifs'||state.nav==='docs') state.nav='project'; state.modal=null; render(); }
+  if(act==='close-detail'){ state.detailOpen=false; render(); }
+  if(act==='widen'){ state.detailWide=!state.detailWide; render(); }
+  if(act==='create'){ state.modal='create'; render(); }
+  if(act==='palette'){ state.modal='palette'; render(); }
+  if(act==='close-modal'){ state.modal=null; render(); }
+  if(act==='fake-create'){ state.modal=null; toast('示例：不会在自建实例创建任务'); render(); }
+  if(act==='fake-comment'){ toast('示例：不会发送评论'); }
+}
+
+window.dragCard=function(ev,id){ ev.dataTransfer.setData('id',id); ev.stopPropagation(); };
+window.dropCard=function(ev,col){
+  ev.preventDefault();
+  const id=ev.dataTransfer.getData('id');
+  const issue=issueById(id);
+  if(issue){ issue.status=col; state.selected=id; toast(`示例：已将 ${id} 移到「${STATUS[col].label}」，未写入服务器`); render(); }
+};
+
+document.getElementById('overlay').addEventListener('click', e=>{ if(e.target.id==='overlay'){ state.modal=null; render(); }});
+document.addEventListener('keydown', e=>{
+  const meta = e.metaKey||e.ctrlKey;
+  if(e.key==='Escape'){ state.modal=null; render(); }
+  if(meta && (e.key==='k'||e.key==='K')){ e.preventDefault(); if(state.route==='app'){ state.modal='palette'; render(); } }
+  if(!meta && e.key==='c' && state.route==='app' && !['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName)){ state.modal='create'; render(); }
+  if(!meta && e.key==='/' && state.route==='app' && !['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName)){ e.preventDefault(); const s=document.getElementById('search'); if(s) s.focus(); else { state.modal='palette'; render(); } }
+});
+
+applyHash();
+render();
+</script>
+</body>
+</html>

@@ -1,0 +1,9 @@
+# 本地编译加速：crates.io 走国内镜像 rsproxy.cn（只影响本项目）
+[source.crates-io]
+replace-with = "rsproxy-sparse"
+
+[source.rsproxy-sparse]
+registry = "sparse+https://rsproxy.cn/index/"
+
+[net]
+retry = 5

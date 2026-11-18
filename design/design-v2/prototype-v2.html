@@ -1,0 +1,711 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>Huly Desk 原型 v2</title>
+  <style>
+    :root {
+      --primary: #1868db;
+      --text: #172b4d;
+      --sub: #6b778c;
+      --muted: #8c8c8c;
+      --line: #f0f0f0;
+      --bg: #f7f8fa;
+      --hover: #f5f8ff;
+      --active: #e8f1ff;
+      --danger: #cf1322;
+      --ok: #2f9e44;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0; height: 100%;
+      font: 13px/1.5 -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
+      color: var(--text); background: #fff; overflow: hidden;
+    }
+    #window {
+      width: 1440px; height: 900px; background: #fff; overflow: hidden;
+      display: flex; flex-direction: column;
+    }
+    .titlebar {
+      height: 28px; flex: none; display: flex; align-items: center;
+      border-bottom: 1px solid var(--line); background: #fff; user-select: none;
+    }
+    .lights { display: flex; align-items: center; gap: 8px; padding-left: 12px; height: 28px; }
+    .light { width: 12px; height: 12px; border-radius: 50%; }
+    .light.close { background: #ff5f57; }
+    .light.min { background: #febc2e; }
+    .light.max { background: #28c840; }
+    .win-title {
+      margin-left: 12px; height: 28px; display: flex; align-items: center;
+      font-size: 13px; font-weight: 600; color: var(--text);
+    }
+    .title-right { margin-left: auto; display: flex; align-items: center; gap: 10px; padding-right: 12px; height: 28px; }
+    .bell {
+      width: 22px; height: 22px; border: 0; background: transparent; color: #595959;
+      border-radius: 4px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
+    }
+    .bell:hover { background: var(--hover); }
+    .shell, .project-shell, .auth { flex: 1; min-height: 0; display: none; }
+    .shell.on, .project-shell.on, .auth.on { display: flex; }
+    .auth { background: var(--bg); align-items: center; justify-content: center; }
+    .card {
+      width: 400px; background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 32px;
+    }
+    .card h2 { margin: 0 0 4px; text-align: center; font-size: 20px; }
+    .card .sub { text-align: center; color: var(--sub); margin: 0 0 20px; }
+    .btn {
+      border: 1px solid #d9d9d9; background: #fff; color: var(--text);
+      height: 32px; padding: 0 12px; border-radius: 6px; cursor: pointer; font: inherit;
+    }
+    .btn:hover { border-color: var(--primary); color: var(--primary); }
+    .btn.primary { background: var(--primary); border-color: var(--primary); color: #fff; }
+    .btn.primary:hover { filter: brightness(1.05); color: #fff; }
+    .btn.lg { height: 36px; width: 100%; font-size: 14px; }
+    .btn.link { border: 0; background: none; color: var(--primary); padding: 0 6px; height: auto; }
+    .btn.link.danger { color: var(--danger); }
+    .btn.link:disabled, .btn:disabled { color: var(--muted); cursor: not-allowed; border-color: var(--line); }
+    .btn.ghost { background: transparent; }
+    input, select, textarea {
+      font: inherit; color: var(--text); border: 1px solid #d9d9d9; border-radius: 6px;
+      height: 32px; padding: 0 10px; outline: none; background: #fff; width: 100%;
+    }
+    input:focus, select:focus, textarea:focus { border-color: var(--primary); box-shadow: 0 0 0 2px rgba(24,104,219,.12); }
+    textarea { height: auto; padding: 8px 10px; resize: vertical; }
+    .sider {
+      width: 240px; flex: none; background: var(--bg); border-right: 1px solid var(--line);
+      display: flex; flex-direction: column; overflow: visible;
+    }
+    .ws-name { padding: 12px 16px 8px; color: var(--sub); font-size: 12px; }
+    .ws-name b { display: block; color: var(--text); font-size: 14px; margin-top: 2px; }
+    .nav { padding: 0 8px; flex: 1; overflow: auto; }
+    .nav-item {
+      display: flex; width: 100%; border: 0; background: transparent; text-align: left;
+      padding: 7px 10px; border-radius: 6px; cursor: pointer; color: inherit; font: inherit;
+    }
+    .nav-item:hover { background: #eceff4; }
+    .nav-item.on { background: var(--active); color: var(--primary); font-weight: 600; }
+    .account {
+      border-top: 1px solid var(--line); padding: 10px 12px; display: flex; align-items: center; gap: 8px;
+      cursor: pointer; position: relative;
+    }
+    .account:hover { background: #eceff4; }
+    .avatar {
+      width: 28px; height: 28px; border-radius: 50%; color: #fff; display: grid; place-items: center;
+      font-size: 12px; font-weight: 600; flex: none;
+    }
+    .avatar.sm { width: 22px; height: 22px; font-size: 11px; }
+    .avatar.xs { width: 20px; height: 20px; font-size: 10px; }
+    .account .name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .menu, .submenu {
+      position: absolute; background: #fff; border: 1px solid #e6e6e6; border-radius: 8px;
+      box-shadow: 0 8px 24px rgba(23,43,77,.12); padding: 6px; z-index: 40; min-width: 180px;
+    }
+    .menu { left: 12px; bottom: 52px; display: none; }
+    .menu.open { display: block; }
+    .submenu { left: 186px; bottom: 0; display: none; min-width: 200px; }
+    .menu.open.ws .submenu { display: block; }
+    .menu-item {
+      display: flex; align-items: center; gap: 8px; width: 100%; border: 0; background: none;
+      text-align: left; padding: 7px 10px; border-radius: 6px; cursor: pointer; font: inherit; color: inherit;
+    }
+    .menu-item:hover, .menu-item.on { background: var(--hover); }
+    .menu-item .chk { margin-left: auto; color: var(--primary); width: 16px; }
+    .menu-item .arrow { margin-left: auto; color: var(--muted); }
+    .content { flex: 1; min-width: 0; display: flex; flex-direction: column; background: #fff; }
+    .page { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+    .page-head {
+      display: flex; align-items: center; gap: 8px; padding: 12px 16px; border-bottom: 1px solid var(--line); flex: none;
+    }
+    .page-head h1 { margin: 0; font-size: 16px; font-weight: 600; }
+    .page-head .tools { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+    .body { flex: 1; min-height: 0; overflow: auto; padding: 16px; }
+    table.grid { width: 100%; border-collapse: collapse; }
+    table.grid th, table.grid td {
+      text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: middle;
+    }
+    table.grid th { color: var(--sub); font-weight: 600; font-size: 12px; background: #fafbfc; }
+    table.grid tbody tr:hover td { background: var(--hover); }
+    table.grid tbody tr.clickable { cursor: pointer; }
+    .avatars { display: flex; align-items: center; }
+    .avatars .avatar { margin-right: -4px; border: 2px solid #fff; }
+    .avatars .more { margin-left: 10px; color: var(--muted); font-size: 12px; }
+    .person { display: flex; align-items: center; gap: 6px; }
+    .tag { display: inline-block; padding: 0 8px; height: 22px; line-height: 22px; border-radius: 4px; font-size: 12px; }
+    .tag.owner { background: #fff1b8; color: #ad6800; }
+    .tag.maint { background: #e6f4ff; color: #0958d9; }
+    .tag.user { background: #f5f5f5; color: #555; }
+    .tag.guest { background: #f9f0ff; color: #531dab; }
+    .tag.ok { background: #f6ffed; color: #389e0d; }
+    .tag.off { background: #fff2f0; color: #cf1322; }
+    .hint { color: var(--muted); font-size: 12px; margin-left: 4px; }
+    .empty { height: 320px; display: grid; place-items: center; color: var(--muted); text-align: center; }
+    .skel { background: linear-gradient(90deg, #f0f0f0 25%, #f7f7f7 37%, #f0f0f0 63%); background-size: 400% 100%; animation: s 1.4s ease infinite; border-radius: 4px; height: 14px; }
+    @keyframes s { 0% { background-position: 100% 0; } 100% { background-position: 0 0; } }
+    .project-shell { flex-direction: column; }
+    .proj-bar {
+      display: flex; align-items: center; gap: 10px; padding: 8px 16px; border-bottom: 1px solid var(--line); flex: none;
+    }
+    .seg { display: inline-flex; background: #f2f3f5; border-radius: 6px; padding: 2px; }
+    .seg button { border: 0; background: transparent; height: 26px; padding: 0 10px; border-radius: 4px; cursor: pointer; font: inherit; }
+    .seg button.on { background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+    .switcher { position: relative; }
+    .switcher-btn {
+      border: 1px solid transparent; background: none; font: inherit; font-size: 15px; font-weight: 600;
+      padding: 4px 8px; border-radius: 6px; cursor: pointer; color: var(--text);
+    }
+    .switcher-btn:hover { background: var(--hover); }
+    .switcher-pop {
+      display: none; position: absolute; top: 34px; left: 0; width: 320px; background: #fff;
+      border: 1px solid #e6e6e6; border-radius: 8px; box-shadow: 0 8px 24px rgba(23,43,77,.12); padding: 8px; z-index: 30;
+    }
+    .switcher.open .switcher-pop { display: block; }
+    .switcher-pop .item { display: flex; padding: 8px 10px; border-radius: 6px; cursor: pointer; }
+    .switcher-pop .item:hover, .switcher-pop .item.on { background: var(--active); }
+    .work { flex: 1; min-height: 0; display: flex; }
+    .work-main { flex: 1; min-width: 0; display: flex; flex-direction: column; overflow: auto; }
+    .drawer {
+      width: 400px; flex: none; border-left: 1px solid var(--line); display: none; flex-direction: column; background: #fff;
+    }
+    .drawer.on { display: flex; }
+    .drawer-hd { padding: 12px 16px; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; }
+    .drawer-bd { flex: 1; overflow: auto; padding: 16px; }
+    .drawer-ft { border-top: 1px solid var(--line); padding: 12px; display: grid; gap: 8px; }
+    .field { display: grid; grid-template-columns: 64px 1fr; gap: 8px; align-items: center; }
+    .field > .tag { justify-self: start; }
+    .board { flex: 1; display: flex; gap: 12px; padding: 12px; background: #f5f6f8; overflow: auto; }
+    .col { width: 250px; flex: none; background: #eef1f6; border-radius: 8px; padding: 8px; }
+    .card-issue { background: #fff; border-radius: 6px; padding: 10px 12px; margin-top: 8px; box-shadow: 0 1px 2px rgba(0,0,0,.04); cursor: pointer; }
+    .overlay {
+      position: fixed; inset: 0; background: rgba(23,43,77,.36); display: none; align-items: center; justify-content: center; z-index: 50;
+    }
+    .overlay.on { display: flex; }
+    .modal { width: 480px; background: #fff; border-radius: 8px; box-shadow: 0 12px 40px rgba(0,0,0,.16); }
+    .modal h3 { margin: 0; padding: 16px 20px 0; font-size: 16px; }
+    .modal .mod-body { padding: 16px 20px; display: grid; gap: 12px; }
+    .modal .mod-foot { padding: 12px 20px 16px; display: flex; justify-content: flex-end; gap: 8px; }
+    .label { color: var(--sub); font-size: 12px; margin-bottom: 4px; display: block; }
+    .pri-u { color: #c92a2a; } .pri-h { color: #d9480f; } .pri-m { color: #1868db; } .pri-l { color: #2f9e44; }
+    .toast {
+      position: absolute; top: 40px; left: 50%; transform: translateX(-50%); background: #172b4d; color: #fff;
+      padding: 8px 14px; border-radius: 6px; display: none; z-index: 60; font-size: 13px;
+    }
+    .popover {
+      display: none; position: absolute; top: 28px; right: 12px; width: 280px; background: #fff;
+      border: 1px solid #e6e6e6; border-radius: 8px; box-shadow: 0 8px 24px rgba(23,43,77,.12); padding: 16px; z-index: 40;
+    }
+    .popover.on { display: block; }
+    .md p { margin: 4px 0; }
+    .muted { color: var(--muted); }
+  </style>
+</head>
+<body>
+  <div id="window">
+    <div class="titlebar">
+      <div class="lights" aria-hidden="true">
+        <span class="light close"></span>
+        <span class="light min"></span>
+        <span class="light max"></span>
+      </div>
+      <div class="win-title">Huly Desk</div>
+      <div class="title-right">
+        <button class="bell" id="bell" title="通知" aria-label="通知">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.64 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+    <div class="popover" id="bell-pop">通知将在后续提供。第一期只做任务跟踪。</div>
+    <div class="toast" id="toast"></div>
+
+    <!-- 登录（沿用上一轮，便于退出后可点回） -->
+    <div class="auth" id="view-login">
+      <form class="card" onsubmit="return enterLogin(event)">
+        <h2>Huly Desk</h2>
+        <p class="sub">登录</p>
+        <label class="label">邮箱</label>
+        <input value="bill@example.com" style="margin-bottom:12px" />
+        <label class="label">密码</label>
+        <input type="password" value="••••••••" style="margin-bottom:16px" />
+        <button class="btn primary lg" type="submit">登录</button>
+      </form>
+    </div>
+
+    <div class="auth" id="view-picker">
+      <div class="card">
+        <h2 style="text-align:left">选择工作区</h2>
+        <p class="sub" style="text-align:left">请选择进入后的默认工作区。</p>
+        <div id="picker-list" style="display:grid;gap:8px"></div>
+        <button class="btn primary lg" style="margin-top:20px" onclick="enterWorkspace(pickedWs)">进入工作区</button>
+      </div>
+    </div>
+
+    <!-- 工作区壳体 -->
+    <div class="shell" id="view-shell">
+      <aside class="sider">
+        <div class="ws-name">工作区<b id="ws-title">公司</b></div>
+        <nav class="nav">
+          <button class="nav-item on" data-nav="projects" onclick="showNav('projects')">项目列表</button>
+          <button class="nav-item" data-nav="mine" onclick="showNav('mine')">我的任务</button>
+          <button class="nav-item" data-nav="members" onclick="showNav('members')">员工管理</button>
+        </nav>
+        <div class="account" id="account" onclick="toggleAccount(event)">
+          <div class="avatar" style="background:#7048e8" id="me-avatar">B</div>
+          <div class="name" id="me-name">Bill Murphy</div>
+          <div class="menu" id="account-menu">
+            <button class="menu-item" id="ws-item" onmouseenter="accountMenu.classList.add('ws')" onclick="accountMenu.classList.add('ws')">
+              切换工作区 <span class="arrow">›</span>
+            </button>
+            <button class="menu-item" onclick="showNav('profile'); closeMenus()">个人中心</button>
+            <button class="menu-item" onclick="logout()">退出登录</button>
+            <div class="submenu" id="ws-sub"></div>
+          </div>
+        </div>
+      </aside>
+      <section class="content">
+        <div class="page" id="page-projects">
+          <div class="page-head">
+            <h1>项目列表</h1>
+            <span class="muted" id="proj-refresh"></span>
+            <div class="tools">
+              <input id="proj-search" placeholder="搜索项目名称或代号" style="width:220px" oninput="renderProjects()" />
+            </div>
+          </div>
+          <div class="body" id="projects-body"></div>
+        </div>
+        <div class="page" id="page-members" style="display:none">
+          <div class="page-head">
+            <h1>员工管理</h1>
+            <div class="tools">
+              <button class="btn primary" id="btn-invite" onclick="openInvite()">邀请成员</button>
+            </div>
+          </div>
+          <div class="body" id="members-body"></div>
+        </div>
+        <div class="page" id="page-mine" style="display:none">
+          <div class="page-head"><h1>我的任务</h1></div>
+          <div class="body" id="mine-body"></div>
+        </div>
+        <div class="page" id="page-profile" style="display:none">
+          <div class="page-head"><h1>个人中心</h1></div>
+          <div class="body" id="profile-body"></div>
+        </div>
+      </section>
+    </div>
+
+    <!-- 沉浸式项目 -->
+    <div class="project-shell" id="view-project">
+      <div class="proj-bar">
+        <button class="btn ghost" onclick="backToProjects()">← 返回项目列表</button>
+        <div class="switcher" id="proj-switcher">
+          <button class="switcher-btn" id="proj-title" onclick="toggleSwitcher(event)">CORE 核心平台 ▾</button>
+          <div class="switcher-pop" id="switcher-pop"></div>
+        </div>
+        <div class="seg">
+          <button class="on" id="tab-list" onclick="setProjectView('list')">列表</button>
+          <button id="tab-board" onclick="setProjectView('board')">看板</button>
+        </div>
+        <input placeholder="搜索任务标题或编号" style="width:200px;margin-left:8px" />
+        <select style="width:120px"><option>全部指派</option></select>
+        <select style="width:120px"><option>全部优先级</option></select>
+        <div style="margin-left:auto">
+          <button class="btn primary" onclick="toast('示例原型不创建真实任务')">创建任务</button>
+        </div>
+      </div>
+      <div class="work">
+        <div class="work-main" id="work-main"></div>
+        <aside class="drawer" id="drawer"></aside>
+      </div>
+    </div>
+  </div>
+
+  <div class="overlay" id="overlay" onclick="if(event.target===this)closeModal()"></div>
+
+  <script>
+    const COLORS = ["#1868db","#2f9e44","#7048e8","#e8590c","#0c8599","#c2255c"];
+    const people = {
+      "p-bill": { id:"p-bill", name:"Bill Murphy", email:"bill@example.com", color:"#7048e8", role:"OWNER", active:true },
+      "p-zhang": { id:"p-zhang", name:"张敏", email:"zhang@example.com", color:"#1868db", role:"MAINTAINER", active:true },
+      "p-li": { id:"p-li", name:"李强", email:"li@example.com", color:"#2f9e44", role:"USER", active:true },
+      "p-wang": { id:"p-wang", name:"王晓", email:"wang@example.com", color:"#e8590c", role:"USER", active:true },
+      "p-chen": { id:"p-chen", name:"陈文杰", email:"chen@example.com", color:"#0c8599", role:"GUEST", active:false }
+    };
+    const roleLabel = { OWNER:"所有者", MAINTAINER:"维护者", USER:"成员", GUEST:"访客" };
+    const roleClass = { OWNER:"owner", MAINTAINER:"maint", USER:"user", GUEST:"guest" };
+    const workspaces = [
+      { url:"company", name:"公司" },
+      { url:"rd", name:"研发" },
+      { url:"success", name:"客户成功" }
+    ];
+    const projectsByWs = {
+      company: [
+        { id:"core", identifier:"CORE", name:"核心平台", open:4, total:5, members:["p-zhang","p-li","p-wang","p-bill"], lead:"p-zhang", updated:"2026-11-18" },
+        { id:"nc", identifier:"509南昌", name:"南昌计算机实施项目", open:8, total:12, members:["p-li","p-wang"], lead:"p-li", updated:"2026-11-17" },
+        { id:"iot", identifier:"5090_", name:"物联汇聚平台", open:3, total:5, members:["p-zhang","p-bill"], lead:"p-zhang", updated:"2026-11-16" }
+      ],
+      rd: [
+        { id:"app", identifier:"APP", name:"移动端", open:2, total:2, members:["p-wang","p-bill"], lead:"p-wang", updated:"2026-11-16" }
+      ],
+      success: [
+        { id:"cs", identifier:"CS", name:"客户成功", open:1, total:1, members:["p-li"], lead:null, updated:"2026-11-12" }
+      ]
+    };
+    const issues = [
+      { id:"i-128", key:"CORE-128", title:"登录页在弱网下会重复提交", status:"进行中", pri:"高", priClass:"pri-h", assignee:"p-zhang", due:"2026-11-21", desc:"用户在弱网点击「登录」后，偶发重复请求。需要在客户端加锁，并在服务端做幂等。", children:[["CORE-141","登录按钮增加提交锁"],["CORE-142","登录接口增加幂等键"]] },
+      { id:"i-129", key:"CORE-129", title:"看板拖拽后未同步状态", status:"待办", pri:"紧急", priClass:"pri-u", assignee:"p-li", due:"2026-11-20", desc:"把卡片拖到另一列后，刷新页面状态又回到原来的列。" },
+      { id:"i-130", key:"CORE-130", title:"为任务详情补充截止日期字段", status:"待办", pri:"中", priClass:"pri-m", assignee:"p-wang", due:"2026-11-25", desc:"详情侧栏需要能查看和修改截止日期。" },
+      { id:"i-131", key:"CORE-131", title:"整理自建服务器连接文档", status:"待办池", pri:"低", priClass:"pri-l", assignee:null, due:"—", desc:"把非标准端口、config.json 和钥匙串的说明写进内部文档。" },
+      { id:"i-125", key:"CORE-125", title:"登录错误提示改成中文", status:"完成", pri:"低", priClass:"pri-l", assignee:"p-li", due:"2026-11-18", desc:"失败时直接显示服务端英文状态码，需要换成可读的中文说明。" }
+    ];
+
+    let currentUserRole = "OWNER";
+    let currentWs = "company";
+    let pickedWs = "company";
+    let currentProject = "core";
+    let projectView = "list";
+    let selectedIssue = "i-128";
+    let emptyProjects = false;
+    let loadingProjects = false;
+    const accountMenu = document.getElementById("account-menu");
+
+    function avatar(p, size) {
+      if (!p) return `<span class="muted">未设置</span>`;
+      return `<span class="person"><span class="avatar ${size||""}" style="background:${p.color}">${p.name.slice(0,1)}</span>${p.name}</span>`;
+    }
+    function toast(t) {
+      const el = document.getElementById("toast");
+      el.textContent = t; el.style.display = "block";
+      setTimeout(() => el.style.display = "none", 1800);
+    }
+    function showOnly(id) {
+      document.querySelectorAll(".shell,.project-shell,.auth").forEach(el => el.classList.remove("on"));
+      document.getElementById(id).classList.add("on");
+      closeMenus(); closeModal();
+    }
+    function closeMenus() {
+      accountMenu.classList.remove("open","ws");
+      document.getElementById("proj-switcher").classList.remove("open");
+      document.getElementById("bell-pop").classList.remove("on");
+    }
+    function enterLogin(ev) { ev.preventDefault(); renderPicker(); showOnly("view-picker"); return false; }
+    function renderPicker() {
+      document.getElementById("picker-list").innerHTML = workspaces.map(w => `
+        <label style="display:flex;gap:8px;align-items:center;padding:12px 16px;border:1px solid ${pickedWs===w.url?'#1868db':'#f0f0f0'};border-radius:6px;background:${pickedWs===w.url?'#f0f5ff':'#fff'};cursor:pointer">
+          <input type="radio" name="ws" ${pickedWs===w.url?"checked":""} onchange="pickedWs='${w.url}'" /> ${w.name}
+        </label>`).join("");
+    }
+    function enterWorkspace(url) {
+      currentWs = url;
+      document.getElementById("ws-title").textContent = workspaces.find(w=>w.url===url).name;
+      renderWsSub(); showNav("projects"); showOnly("view-shell");
+    }
+    function logout() { showOnly("view-login"); closeMenus(); }
+    function toggleAccount(e) {
+      e.stopPropagation();
+      accountMenu.classList.toggle("open");
+      accountMenu.classList.remove("ws");
+    }
+    function renderWsSub() {
+      document.getElementById("ws-sub").innerHTML = workspaces.map(w => `
+        <button class="menu-item ${w.url===currentWs?"on":""}" onclick="enterWorkspace('${w.url}')">
+          ${w.name}<span class="chk">${w.url===currentWs?"✓":""}</span>
+        </button>`).join("");
+    }
+    function showNav(name) {
+      closeMenus();
+      document.querySelectorAll(".nav-item").forEach(b => b.classList.toggle("on", b.dataset.nav===name));
+      ["projects","members","mine","profile"].forEach(p => {
+        document.getElementById("page-"+p).style.display = p===name ? "flex" : "none";
+        document.getElementById("page-"+p).style.flexDirection = "column";
+        document.getElementById("page-"+p).style.flex = "1";
+        document.getElementById("page-"+p).style.minHeight = "0";
+      });
+      if (name==="projects") renderProjects();
+      if (name==="members") renderMembers();
+      if (name==="mine") renderMine();
+      if (name==="profile") renderProfile();
+    }
+    function canManage() { return currentUserRole==="OWNER" || currentUserRole==="MAINTAINER"; }
+    function renderProjects() {
+      const q = (document.getElementById("proj-search").value||"").trim();
+      const body = document.getElementById("projects-body");
+      document.getElementById("proj-refresh").textContent = loadingProjects ? "正在加载…" : "";
+      if (loadingProjects) {
+        body.innerHTML = `<div style="display:grid;gap:12px;padding:8px 0">${[1,2,3,4].map(()=>`<div class="skel" style="height:36px"></div>`).join("")}</div>`;
+        return;
+      }
+      if (emptyProjects) {
+        body.innerHTML = `<div class="empty"><div>这个工作区还没有项目。<div class="hint" style="margin-top:8px">可在 Huly 网页端创建，或等后续版本在此新建。</div></div></div>`;
+        return;
+      }
+      let rows = projectsByWs[currentWs] || [];
+      if (q) rows = rows.filter(p => p.identifier.includes(q) || p.name.includes(q));
+      const manage = canManage();
+      body.innerHTML = `<table class="grid">
+        <thead><tr><th>代号</th><th>名称</th><th>任务数</th><th>成员</th><th>负责人</th><th>更新时间</th><th>操作</th></tr></thead>
+        <tbody>${rows.map(p => {
+          const mems = p.members.map(id => people[id]);
+          const shown = mems.slice(0,4);
+          const lead = p.lead ? people[p.lead] : null;
+          const ops = manage
+            ? `<button class="btn link" onclick="event.stopPropagation();openProject('${p.id}')">进入项目</button>
+               <button class="btn link" onclick="event.stopPropagation();openAddMember('${p.id}')">添加成员</button>
+               <button class="btn link" onclick="event.stopPropagation();openEditProject('${p.id}')">编辑</button>`
+            : `<button class="btn link" onclick="event.stopPropagation();openProject('${p.id}')">进入项目</button>
+               <span class="hint">添加成员 / 编辑 暂不支持</span>`;
+          return `<tr class="clickable" onclick="openProject('${p.id}')">
+            <td style="font-weight:600;white-space:nowrap">${p.identifier}</td>
+            <td>${p.name}</td>
+            <td>${p.open} / ${p.total}</td>
+            <td><div class="avatars">${shown.map(m=>`<span class="avatar xs" title="${m.name}" style="background:${m.color}">${m.name.slice(0,1)}</span>`).join("")}${mems.length>4?`<span class="more">+${mems.length-4}</span>`:""}</div></td>
+            <td>${avatar(lead,"xs")}</td>
+            <td>${p.updated}</td>
+            <td style="white-space:nowrap" onclick="event.stopPropagation()">${ops}</td>
+          </tr>`;
+        }).join("") || `<tr><td colspan="7" class="muted">没有符合条件的项目。</td></tr>`}</tbody>
+      </table>`;
+    }
+    function renderMembers() {
+      const manage = canManage();
+      document.getElementById("btn-invite").style.display = manage ? "" : "none";
+      const list = Object.values(people);
+      document.getElementById("members-body").innerHTML = `<table class="grid">
+        <thead><tr><th>姓名</th><th>邮箱</th><th>角色</th><th>状态</th><th>操作</th></tr></thead>
+        <tbody>${list.map(p => {
+          let ops;
+          if (!manage) ops = `<span class="hint">暂不支持</span>`;
+          else {
+            const canRole = currentUserRole==="OWNER" || (currentUserRole==="MAINTAINER" && (p.role==="USER"||p.role==="GUEST"));
+            const canRemove = currentUserRole==="OWNER" && p.id!=="p-bill";
+            ops = `${canRole?`<button class="btn link" onclick="toast('已在示例中记录角色变更')">改角色</button>`:`<span class="hint">改角色 暂不支持</span>`}
+                   ${canRemove?`<button class="btn link danger" onclick="confirmRemove('${p.id}')">移除</button>`: (p.id==="p-bill"?`<span class="hint">不能移除自己</span>`:`<span class="hint">移除 暂不支持</span>`)}`;
+          }
+          return `<tr>
+            <td>${avatar(p,"xs")}</td>
+            <td>${p.email}</td>
+            <td><span class="tag ${roleClass[p.role]}">${roleLabel[p.role]}</span></td>
+            <td><span class="tag ${p.active?"ok":"off"}">${p.active?"在职":"停用"}</span></td>
+            <td style="white-space:nowrap">${ops}</td>
+          </tr>`;
+        }).join("")}</tbody></table>
+        ${manage?"":`<p class="hint" style="margin-top:12px">当前身份为普通成员，只能查看名单。邀请、改角色和移除暂不支持。</p>`}`;
+    }
+    function renderMine() {
+      const mine = issues.filter(i => i.assignee==="p-bill" || i.id==="i-128");
+      // Bill has APP issues in other mock; for 公司 show none assigned to bill in CORE except we assign nothing.
+      // Show 张敏's? Current user is Bill. Give Bill one borrowed row from comment... Use empty-ish plus a made item.
+      const rows = [
+        { key:"CORE-128", title:"登录页在弱网下会重复提交", project:"CORE 核心平台", status:"进行中", pri:"高", id:"i-128" }
+      ];
+      document.getElementById("mine-body").innerHTML = `<table class="grid">
+        <thead><tr><th>编号</th><th>标题</th><th>项目</th><th>状态</th><th>优先级</th></tr></thead>
+        <tbody>${rows.map(r=>`<tr class="clickable" onclick="openProject('core','${r.id}')">
+          <td>${r.key}</td><td>${r.title}</td><td>${r.project}</td><td>${r.status}</td><td>${r.pri}</td>
+        </tr>`).join("")}</tbody></table>`;
+    }
+    function renderProfile() {
+      const me = people["p-bill"];
+      document.getElementById("profile-body").innerHTML = `
+        <div style="max-width:480px;display:grid;gap:16px">
+          <div style="display:flex;gap:16px;align-items:center">
+            <span class="avatar" style="background:${me.color};width:40px;height:40px;font-size:16px">${me.name.slice(0,1)}</span>
+            <div><div style="font-size:16px;font-weight:600">${me.name}</div><div class="muted">${me.email}</div></div>
+          </div>
+          <div class="field"><span class="muted">工作区</span><span>${workspaces.find(w=>w.url===currentWs).name}</span></div>
+          <div class="field"><span class="muted">角色</span><span class="tag ${roleClass[currentUserRole]}">${roleLabel[currentUserRole]}</span></div>
+          <p class="hint">资料目前只读。若要在此修改姓名，需要再确认是否开放。</p>
+        </div>`;
+    }
+    function openProject(pid, issueId) {
+      currentProject = pid;
+      projectView = "list";
+      selectedIssue = issueId || (pid==="core" ? "i-128" : null);
+      const p = (projectsByWs[currentWs]||[]).find(x=>x.id===pid);
+      document.getElementById("proj-title").textContent = p ? `${p.identifier} ${p.name} ▾` : "项目 ▾";
+      document.getElementById("tab-list").classList.toggle("on", true);
+      document.getElementById("tab-board").classList.toggle("on", false);
+      renderSwitcher(); renderWork(); showOnly("view-project");
+    }
+    function backToProjects() { showOnly("view-shell"); showNav("projects"); }
+    function toggleSwitcher(e) { e.stopPropagation(); document.getElementById("proj-switcher").classList.toggle("open"); }
+    function renderSwitcher() {
+      const rows = projectsByWs[currentWs]||[];
+      document.getElementById("switcher-pop").innerHTML = `
+        <input placeholder="搜索项目" style="margin-bottom:8px" oninput="filterSwitcher(this.value)" />
+        <div id="switcher-items">${switcherItems(rows,"")}</div>`;
+    }
+    function switcherItems(rows,q) {
+      return rows.filter(p => !q || p.identifier.includes(q) || p.name.includes(q)).map(p=>`
+        <div class="item ${p.id===currentProject?"on":""}" onclick="openProject('${p.id}')">
+          <span style="font-weight:600;width:88px">${p.identifier}</span><span>${p.name}</span>
+        </div>`).join("") || `<div class="muted" style="padding:8px">没有匹配的项目</div>`;
+    }
+    function filterSwitcher(q) { document.getElementById("switcher-items").innerHTML = switcherItems(projectsByWs[currentWs]||[], q); }
+    function setProjectView(v) {
+      projectView = v;
+      document.getElementById("tab-list").classList.toggle("on", v==="list");
+      document.getElementById("tab-board").classList.toggle("on", v==="board");
+      renderWork();
+    }
+    function renderWork() {
+      const main = document.getElementById("work-main");
+      const drawer = document.getElementById("drawer");
+      if (currentProject!=="core") {
+        main.innerHTML = `<div class="empty">该项目还没有在此原型中放入任务。<div style="margin-top:8px"><button class="btn primary" onclick="toast('示例原型不创建真实任务')">创建任务</button></div></div>`;
+        drawer.classList.remove("on");
+        return;
+      }
+      if (projectView==="board") {
+        const cols = ["待办池","待办","进行中","完成"];
+        main.innerHTML = `<div class="board">${cols.map(c => {
+          const cards = issues.filter(i=>i.status===c);
+          return `<div class="col"><div class="muted">${c} ${cards.length}</div>${cards.map(i=>`
+            <div class="card-issue" onclick="selectIssue('${i.id}')">
+              <div class="muted" style="font-size:12px">${i.key}</div>
+              <div style="margin-top:4px">${i.title}</div>
+              <div style="margin-top:8px;display:flex;justify-content:space-between">
+                <span class="${i.priClass}">${i.pri}</span>
+                ${i.assignee?`<span class="avatar xs" style="background:${people[i.assignee].color}">${people[i.assignee].name.slice(0,1)}</span>`:""}
+              </div>
+            </div>`).join("")}</div>`;
+        }).join("")}</div>`;
+      } else {
+        const groups = ["待办池","待办","进行中","完成"];
+        main.innerHTML = groups.map(g => {
+          const rows = issues.filter(i=>i.status===g);
+          if (!rows.length) return "";
+          return `<div style="padding:8px 16px 0;font-weight:600">${g} <span class="muted">· ${rows.length}</span></div>
+            <table class="grid"><thead><tr><th>编号</th><th>标题</th><th>优先级</th><th>指派人</th><th>截止日期</th></tr></thead>
+            <tbody>${rows.map(i=>`<tr class="clickable" style="${i.id===selectedIssue?"background:#e8f1ff":""}" onclick="selectIssue('${i.id}')">
+              <td>${i.key}</td><td>${i.title}</td><td><span class="${i.priClass}">${i.pri}</span></td>
+              <td>${i.assignee?avatar(people[i.assignee],"xs"):"未指派"}</td><td>${i.due}</td>
+            </tr>`).join("")}</tbody></table>`;
+        }).join("");
+      }
+      if (selectedIssue) { drawer.classList.add("on"); renderDrawer(); }
+      else drawer.classList.remove("on");
+    }
+    function selectIssue(id) { selectedIssue = id; renderWork(); }
+    function renderDrawer() {
+      const i = issues.find(x=>x.id===selectedIssue);
+      if (!i) { document.getElementById("drawer").classList.remove("on"); return; }
+      document.getElementById("drawer").innerHTML = `
+        <div class="drawer-hd"><span class="muted">${i.key}</span><button class="btn link" onclick="selectedIssue=null;renderWork()">关闭</button></div>
+        <div class="drawer-bd">
+          <div style="font-size:16px;font-weight:600;margin-bottom:12px">${i.title}</div>
+          <div style="font-weight:600">描述</div>
+          <div class="md"><p>${i.desc}</p></div>
+          <p class="hint">描述目前只读，修改请暂时在 Huly 网页端进行。</p>
+          ${i.children?`<div style="font-weight:600;margin-top:12px">子任务</div>${i.children.map(c=>`<div class="muted" style="padding:6px 0">${c[0]} ${c[1]}</div>`).join("")}`:""}
+        </div>
+        <div class="drawer-ft">
+          <div class="field"><span class="muted">状态</span><select><option>${i.status}</option></select></div>
+          <div class="field"><span class="muted">指派人</span><select><option>${i.assignee?people[i.assignee].name:"未指派"}</option></select></div>
+          <div class="field"><span class="muted">优先级</span><select><option>${i.pri}</option></select></div>
+          <div class="field"><span class="muted">截止日期</span><input value="${i.due==="—"?"":i.due}" placeholder="请选择日期" /></div>
+        </div>`;
+    }
+    function openAddMember(pid) {
+      const p = (projectsByWs[currentWs]||[]).find(x=>x.id===pid);
+      const options = Object.values(people).filter(m => !p.members.includes(m.id));
+      showModal(`<h3>添加项目成员</h3>
+        <div class="mod-body">
+          <div class="muted">${p.identifier} ${p.name}</div>
+          <div><span class="label">从工作区成员中选择</span>
+            <select id="add-mem">${options.map(m=>`<option value="${m.id}">${m.name}（${m.email}）</option>`).join("")||`<option>没有可添加的成员</option>`}</select>
+          </div>
+        </div>
+        <div class="mod-foot">
+          <button class="btn" onclick="closeModal()">取消</button>
+          <button class="btn primary" onclick="toast('已在示例中加入成员');closeModal()">添加</button>
+        </div>`);
+    }
+    function openEditProject(pid) {
+      const p = (projectsByWs[currentWs]||[]).find(x=>x.id===pid);
+      showModal(`<h3>编辑项目</h3>
+        <div class="mod-body">
+          <div><span class="label">代号</span><input value="${p.identifier}" disabled /><div class="hint">第一期建议不改代号，以免影响任务编号。</div></div>
+          <div><span class="label">名称</span><input value="${p.name}" /></div>
+          <div><span class="label">负责人</span>
+            <select>${Object.values(people).map(m=>`<option ${p.lead===m.id?"selected":""}>${m.name}</option>`).join("")}<option ${!p.lead?"selected":""}>未设置</option></select>
+          </div>
+          <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" style="width:auto;height:auto" /> 归档此项目</label>
+          <div class="hint">归档后默认不出现在项目列表，可在后续加「显示已归档」。</div>
+        </div>
+        <div class="mod-foot">
+          <button class="btn" onclick="closeModal()">取消</button>
+          <button class="btn primary" onclick="toast('已在示例中保存项目');closeModal()">保存</button>
+        </div>`);
+    }
+    function openInvite() {
+      showModal(`<h3>邀请成员</h3>
+        <div class="mod-body">
+          <div><span class="label">邮箱</span><input placeholder="邮箱@example.com" /></div>
+          <div><span class="label">角色</span>
+            <select><option>成员 USER</option><option>维护者 MAINTAINER</option><option>访客 GUEST</option></select>
+          </div>
+          <div class="hint">将向该邮箱发送邀请。也可以复制邀请链接发给对方。待接受的邀请不会出现在名单里。</div>
+        </div>
+        <div class="mod-foot">
+          <button class="btn" onclick="toast('已复制邀请链接（示例）')">复制邀请链接</button>
+          <button class="btn" onclick="closeModal()">取消</button>
+          <button class="btn primary" onclick="toast('已发出邀请（示例）');closeModal()">发送邀请</button>
+        </div>`);
+    }
+    function confirmRemove(id) {
+      const p = people[id];
+      showModal(`<h3>移除成员</h3>
+        <div class="mod-body">确定将「${p.name}」移出当前工作区吗？此操作将调用 leaveWorkspace，需在实例上确认可以对他人使用。</div>
+        <div class="mod-foot">
+          <button class="btn" onclick="closeModal()">取消</button>
+          <button class="btn primary" onclick="toast('已在示例中移除');closeModal()">移除</button>
+        </div>`);
+    }
+    function showModal(html) {
+      const o = document.getElementById("overlay");
+      o.innerHTML = `<div class="modal">${html}</div>`;
+      o.classList.add("on");
+    }
+    function closeModal() { document.getElementById("overlay").classList.remove("on"); document.getElementById("overlay").innerHTML=""; }
+
+    document.getElementById("bell").onclick = (e) => {
+      e.stopPropagation();
+      document.getElementById("bell-pop").classList.toggle("on");
+    };
+    document.addEventListener("click", (e) => {
+      if (!e.target.closest("#account") && !e.target.closest("#account-menu")) accountMenu.classList.remove("open","ws");
+      if (!e.target.closest("#proj-switcher")) document.getElementById("proj-switcher").classList.remove("open");
+      if (!e.target.closest("#bell") && !e.target.closest("#bell-pop")) document.getElementById("bell-pop").classList.remove("on");
+    });
+
+    // 给 Playwright 用的原型开关（界面上不展示）
+    window.demo = {
+      login: () => showOnly("view-login"),
+      picker: () => { renderPicker(); showOnly("view-picker"); },
+      workspace: (url) => enterWorkspace(url || "company"),
+      setRole(role) { currentUserRole = role; renderProjects(); renderMembers(); },
+      setLoading(v) { loadingProjects = !!v; emptyProjects = false; showNav("projects"); },
+      setEmpty(v) { emptyProjects = !!v; loadingProjects = false; showNav("projects"); },
+      projects: () => { emptyProjects=false; loadingProjects=false; showOnly("view-shell"); showNav("projects"); },
+      members: () => { showOnly("view-shell"); showNav("members"); },
+      mine: () => { showOnly("view-shell"); showNav("mine"); },
+      profile: () => { showOnly("view-shell"); showNav("profile"); },
+      openAccount: () => { showOnly("view-shell"); showNav("projects"); accountMenu.classList.add("open"); },
+      openWsMenu: () => { showOnly("view-shell"); showNav("projects"); accountMenu.classList.add("open","ws"); renderWsSub(); },
+      addMember: () => { showOnly("view-shell"); showNav("projects"); openAddMember("core"); },
+      editProject: () => { showOnly("view-shell"); showNav("projects"); openEditProject("core"); },
+      invite: () => { showOnly("view-shell"); showNav("members"); openInvite(); },
+      openProject: (id, issue) => openProject(id||"core", issue),
+      board: () => { openProject("core","i-128"); setProjectView("board"); },
+      list: () => { openProject("core","i-128"); setProjectView("list"); },
+      closeDetail: () => { selectedIssue=null; renderWork(); },
+      openSwitcher: () => { openProject('core'); demo.closeDetail(); document.getElementById('proj-switcher').classList.add('open'); }
+    };
+
+    renderPicker();
+    renderWsSub();
+    showOnly("view-shell");
+    showNav("projects");
+  </script>
+</body>
+</html>
