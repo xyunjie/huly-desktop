@@ -183,7 +183,12 @@ const handlers: Record<string, (client: DeskClient, args: Record<string, unknown
     const projects = await client.listProjects();
     if (!projects.length) return text("工作区没有项目。");
     return text(
-      projects.map((p) => `${p.identifier}　${p.name}　projectId=${p.id}　打开 ${p.openCount ?? "?"} / 共 ${p.issueCount ?? "?"}`).join("\n"),
+      projects
+        .map((p) => {
+          const counts = p.issueCount !== undefined ? `　打开 ${p.openCount ?? 0} / 共 ${p.issueCount}` : "";
+          return `${p.identifier}　${p.name}　projectId=${p.id}${counts}`;
+        })
+        .join("\n"),
     );
   },
   list_issues: toolListIssues,
