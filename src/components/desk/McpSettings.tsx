@@ -1,8 +1,8 @@
-import { CheckCircleFilled, DownOutlined, ReloadOutlined, RobotOutlined } from "@ant-design/icons";
+import { CheckCircleFilled, DownOutlined, LinkOutlined, ReloadOutlined, RobotOutlined } from "@ant-design/icons";
 import { Button, Tag, Typography, message } from "antd";
 import { useEffect, useState } from "react";
 import { PageTitle } from "./PageTitle";
-import { getMcpConfig, regenerateMcpToken, type McpConfig } from "@/mcp/bridge";
+import { addMcpToClient, getMcpClientStatus, getMcpConfig, regenerateMcpToken, type McpClientStatus, type McpConfig } from "@/mcp/bridge";
 
 interface ClientSpec {
   key: string;
@@ -103,6 +103,8 @@ function McpSettings() {
   const [config, setConfig] = useState<McpConfig | null>(null);
   const [spinning, setSpinning] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [statuses, setStatuses] = useState<Record<string, McpClientStatus | null>>({});
+  const [adding, setAdding] = useState<string | null>(null);
 
   useEffect(() => {
     void getMcpConfig().then(setConfig);
@@ -110,6 +112,18 @@ function McpSettings() {
 
   const url = config?.port ? `http://127.0.0.1:${config.port}/mcp` : "";
   const shortToken = config ? `${config.token.slice(0, 10)}…${config.token.slice(-4)}` : "";
+
+  async function refreshStatuses() {
+    setStatuses({});
+    for (const client of CLIENTS) {
+      const status = await getMcpClientStatus(client.key);
+      setStatuses((current) => ({ ...current, [client.key]: status }));
+    }
+  }
+
+  useEffect(() => {
+    void refreshStatuses();
+  }, []);
 
   return (
     <div style={{ display: "grid", gap: 24 }} data-testid="mcp-settings">
@@ -181,12 +195,25 @@ function McpSettings() {
         <Typography.Title level={5} style={{ marginBottom: 4 }}>
           AI 客户端
         </Typography.Title>
-        <Typography.Text type="secondary">选择你使用的客户端，复制配置加入对应文件后即可连接。</Typography.Text>
+        <Typography.Text type="secondary">
+          一键添加会写入配置或拉起客户端确认；文件写入前自动备份。
+          <Button
+            type="link"
+            size="small"
+            icon={<ReloadOutlined />}
+            style={{ padding: "0 4px", height: "auto" }}
+            onClick={() => void refreshStatuses()}
+          >
+            刷新状态
+          </Button>
+        </Typography.Text>
       </div>
 
       <Card testid="mcp-clients-card">
         {CLIENTS.map((client, index) => {
           const open = expanded === client.key;
+          const status = statuses[client.key];
+          const busy = adding === client.key;
           return (
             <div key={client.key} style={{ borderBottom: index === CLIENTS.length - 1 ? "none" : "1px solid #f0f0f0" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 20px" }}>
@@ -198,11 +225,46 @@ function McpSettings() {
                     >
                       {client.path}
                     </span>
+                    {status ? (
+                      <Tag
+                        color={status.installed ? "success" : "default"}
+                        icon={status.installed ? <CheckCircleFilled /> : undefined}
+                        style={{ marginInlineEnd: 0, fontSize: 12 }}
+                      >
+                        {status.installed ? "已添加" : "未添加"}
+                      </Tag>
+                    ) : null}
                   </div>
                   <div style={{ fontSize: 12, color: "#8e8e93", marginTop: 2 }}>{client.desc}</div>
                 </div>
-                <Button size="small" type="text" onClick={() => copy(config && url ? client.build(url, config.token) : "", client.name)}>
+                <Button
+                  size="small"
+                  type="text"
+                  onClick={() => copy(config && url ? client.build(url, config.token) : "", client.name)}
+                >
                   复制配置
+                </Button>
+                <Button
+                  size="small"
+                  type="primary"
+                  icon={<LinkOutlined />}
+                  loading={busy}
+                  disabled={!config || !url || status?.installed}
+                  onClick={async () => {
+                    if (!config || !url) return;
+                    setAdding(client.key);
+                    try {
+                      const result = await addMcpToClient(client.key, url, config.token);
+                      message.success(result);
+                    } catch (reason) {
+                      message.error(reason instanceof Error ? reason.message : String(reason));
+                    }
+                    setAdding(null);
+                    const next = await getMcpClientStatus(client.key);
+                    setStatuses((current) => ({ ...current, [client.key]: next }));
+                  }}
+                >
+                  一键添加
                 </Button>
                 <Button
                   size="small"

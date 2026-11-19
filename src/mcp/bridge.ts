@@ -27,6 +27,25 @@ export async function regenerateMcpToken(): Promise<McpConfig | null> {
   }
 }
 
+export interface McpClientStatus {
+  installed: boolean;
+  note: string;
+}
+
+export async function getMcpClientStatus(client: string): Promise<McpClientStatus | null> {
+  if (typeof window === "undefined" || !("__TAURI_INTERNALS__" in window)) return null;
+  try {
+    return await invoke<McpClientStatus>("mcp_client_status", { client });
+  } catch {
+    return null;
+  }
+}
+
+/** One-click add: deep link / CLI / direct config write (with backup). */
+export async function addMcpToClient(client: string, url: string, token: string): Promise<string> {
+  return invoke<string>("mcp_add_to_client", { client, url, token });
+}
+
 /**
  * Wire MCP requests from the Rust HTTP server to the dispatcher using the
  * live client. No-op outside Tauri (browser preview mode).

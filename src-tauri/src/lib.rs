@@ -25,7 +25,9 @@ pub fn run() {
             mcp::mcp_get_config,
             mcp::mcp_regenerate_token,
             mcp::mcp_respond,
-            mcp::mcp_bind_window
+            mcp::mcp_bind_window,
+            mcp::mcp_client_status,
+            mcp::mcp_add_to_client
         ])
         .setup(|app| {
             mcp::spawn(app.handle().clone());
