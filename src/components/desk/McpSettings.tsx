@@ -1,6 +1,7 @@
 import { CopyOutlined, ReloadOutlined, RobotOutlined } from "@ant-design/icons";
 import { Button, Collapse, Space, Tag, Typography, message } from "antd";
 import { useEffect, useState } from "react";
+import { PageTitle } from "./PageTitle";
 import { getMcpConfig, regenerateMcpToken, type McpConfig } from "@/mcp/bridge";
 
 const SNIPPETS: { label: string; build: (url: string, token: string) => string }[] = [
@@ -28,7 +29,18 @@ function copy(text: string, label: string) {
   message.success(`已复制${label}。`);
 }
 
-export function McpSettings() {
+export function McpPage() {
+  return (
+    <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
+      <PageTitle>MCP 管理</PageTitle>
+      <div style={{ padding: "24px 20px", maxWidth: 720, display: "grid", gap: 16, alignContent: "start" }}>
+        <McpSettings />
+      </div>
+    </div>
+  );
+}
+
+function McpSettings() {
   const [config, setConfig] = useState<McpConfig | null>(null);
   const [spinning, setSpinning] = useState(false);
 

@@ -1,11 +1,11 @@
-import { CheckSquareOutlined, ProjectOutlined, TeamOutlined } from "@ant-design/icons";
+import { CheckSquareOutlined, ProjectOutlined, RobotOutlined, TeamOutlined } from "@ant-design/icons";
 import { Avatar, Dropdown, Menu, Typography } from "antd";
 import { nameInitial } from "@/data/huly/mapping";
 import { avatarColor } from "@/domain/format";
 import { canManageWorkspaceMembers } from "@/domain/roles";
 import type { Session } from "@/domain/types";
 
-export type DeskNav = "projects" | "mine" | "members" | "profile" | "project";
+export type DeskNav = "projects" | "mine" | "members" | "profile" | "mcp" | "project";
 
 export function Sidebar({
   session,
@@ -22,7 +22,7 @@ export function Sidebar({
 }) {
   const workspaces = session.workspaces ?? [];
   const showMembers = canManageWorkspaceMembers(session.role);
-  const selected = nav === "projects" || nav === "mine" || nav === "members" ? [nav] : [];
+  const selected = nav === "projects" || nav === "mine" || nav === "members" || nav === "mcp" ? [nav] : [];
   return (
     <div className="hd-sider" style={{ height: "100%", display: "flex", flexDirection: "column", background: "#f7f8fa" }}>
       <div style={{ padding: "20px 20px 16px" }}>
@@ -55,9 +55,14 @@ export function Sidebar({
                   },
                 ]
               : []),
+            {
+              key: "mcp",
+              icon: <RobotOutlined />,
+              label: <span data-testid="nav-mcp">MCP 管理</span>,
+            },
           ]}
           onClick={({ key }) => {
-            if (key === "projects" || key === "mine" || key === "members") {
+            if (key === "projects" || key === "mine" || key === "members" || key === "mcp") {
               onNav(key);
             }
           }}

@@ -1,6 +1,5 @@
 import { Avatar, Button, Form, Input, Space, Typography, message } from "antd";
 import { PageTitle } from "./PageTitle";
-import { McpSettings } from "./McpSettings";
 import { useEffect } from "react";
 import { nameInitial, namePartsFromDisplay } from "@/data/huly/mapping";
 import { displayPersonName, storedPersonName } from "@/data/huly/mapping";
@@ -30,7 +29,6 @@ export function ProfilePage({
     <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
       <PageTitle>个人中心</PageTitle>
       <div style={{ padding: "24px 20px", maxWidth: 480, display: "grid", gap: 16 }}>
-        <McpSettings />
         <Space size={16} align="start">
           <Avatar size={48} style={{ background: avatarColor(session.userId ?? session.userName), fontSize: 20 }}>
             {nameInitial(preview)}

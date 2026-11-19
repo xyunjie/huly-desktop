@@ -45,6 +45,7 @@ import { AddProjectMemberModal } from "./AddProjectMemberModal";
 import { EditProjectModal } from "./EditProjectModal";
 import { MemberAdmin } from "./MemberAdmin";
 import { InviteMemberModal } from "./InviteMemberModal";
+import { McpPage } from "./McpSettings";
 import { ProfilePage } from "./ProfilePage";
 import { PageTitle } from "./PageTitle";
 import { ProjectSwitcher } from "./ProjectSwitcher";
@@ -443,6 +444,8 @@ export function DeskScreen(props: {
         onChangeRole={props.onChangeRole}
         onRemove={props.onRemoveMember}
       />
+    ) : props.nav === "mcp" ? (
+      <McpPage />
     ) : props.nav === "profile" ? (
       <ProfilePage session={props.session} saving={props.profileSaving} onSaveName={props.onSaveProfileName} />
     ) : (
