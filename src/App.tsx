@@ -11,6 +11,7 @@ import { HulyDeskClient } from "@/data/huly/client";
 import type { DeskClient } from "@/data/client";
 import { descriptionIsRef } from "@/data/huly/mapping";
 import { loadOfflineSnapshot, saveOfflineSnapshot } from "@/domain/cache";
+import { connectMcpBridge } from "@/mcp/bridge";
 import { categoryFromHuly, localizeStatusName, statusColor } from "@/domain/status";
 import { explainConnectionError, initialDataMode, validateLogin, type LoginDraft } from "@/domain/login";
 import { redactSecrets, type StoredSession } from "@/domain/secrets";
@@ -135,6 +136,9 @@ export default function App() {
       }
     });
   }, [mockDefault]);
+
+  // Local MCP server: forward AI tool calls to the live client.
+  useEffect(() => connectMcpBridge(() => clientRef.current), []);
 
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
