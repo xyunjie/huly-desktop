@@ -29,19 +29,27 @@ export function McpSettings() {
     void getMcpConfig().then(setConfig);
   }, []);
 
-  const url = config ? `http://127.0.0.1:${config.port}/mcp` : "";
+  const url = config?.port ? `http://127.0.0.1:${config.port}/mcp` : "";
 
   return (
     <div style={{ display: "grid", gap: 12 }} data-testid="mcp-settings">
       <Space>
         <RobotOutlined />
         <Typography.Text strong>AI 助手（MCP）</Typography.Text>
-        {config ? <Tag color="green">运行中 · 127.0.0.1:{config.port}</Tag> : <Tag>仅桌面端可用</Tag>}
+        {config ? (
+          config.port ? (
+            <Tag color="green">运行中 · 127.0.0.1:{config.port}</Tag>
+          ) : (
+            <Tag color="orange">正在启动或端口被占</Tag>
+          )
+        ) : (
+          <Tag>仅桌面端可用</Tag>
+        )}
       </Space>
       <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
         让 Claude Code、Codex、OpenCode 等 AI 工具通过本地 MCP 服务读取任务、修改状态和添加评论。服务只监听本机。
       </Typography.Paragraph>
-      {config ? (
+      {config && config.port ? (
         <>
           {Object.entries(SNIPPETS).map(([label, build]) => (
             <div key={label} style={{ display: "grid", gap: 4 }}>

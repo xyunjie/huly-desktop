@@ -7,7 +7,7 @@ use axum::Router;
 use rand::RngCore;
 use serde_json::Value;
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU16, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter, Manager};
 use tauri::WebviewWindow;
@@ -16,6 +16,8 @@ use tokio::sync::oneshot;
 /// Shared MCP server state: bearer token and pending webview requests.
 struct McpState {
     token: String,
+    /// Actual bound port; 0 until the server picks one.
+    port: AtomicU16,
     pending: Mutex<HashMap<u64, oneshot::Sender<Value>>>,
     seq: AtomicU64,
     window: Mutex<Option<WebviewWindow>>,
@@ -28,8 +30,7 @@ fn random_token() -> String {
 }
 
 #[tauri::command]
-pub fn mcp_get_config() -> Result<Value, String> {
-    let port = 41790u16;
+pub fn mcp_get_config(app: AppHandle) -> Result<Value, String> {
     let token = match super::keychain::keychain_load_mcp_token() {
         Ok(Some(existing)) => existing,
         Ok(None) => {
@@ -39,6 +40,10 @@ pub fn mcp_get_config() -> Result<Value, String> {
         }
         Err(reason) => return Err(reason),
     };
+    let port = app
+        .state::<Arc<McpState>>()
+        .port
+        .load(Ordering::Relaxed);
     Ok(serde_json::json!({ "port": port, "token": token }))
 }
 
@@ -138,7 +143,8 @@ fn json_response(status: StatusCode, body: Value) -> Response {
 }
 
 pub fn spawn(app: AppHandle) {
-    let port = 41790u16;
+    const BASE_PORT: u16 = 41790;
+    const MAX_ATTEMPTS: u16 = 20;
     let token = match super::keychain::keychain_load_mcp_token() {
         Ok(Some(existing)) if existing.len() == 64 => existing,
         _ => {
@@ -149,6 +155,7 @@ pub fn spawn(app: AppHandle) {
     };
     let state = Arc::new(McpState {
         token,
+        port: AtomicU16::new(0),
         pending: Mutex::new(HashMap::new()),
         seq: AtomicU64::new(1),
         window: Mutex::new(None),
@@ -160,14 +167,17 @@ pub fn spawn(app: AppHandle) {
             .route("/mcp", post(handle_mcp))
             .route("/mcp", any(|| async { json_response(StatusCode::METHOD_NOT_ALLOWED, serde_json::json!({ "error": "Method Not Allowed" })) }))
             .with_state(state.clone());
-        let listener = tokio::net::TcpListener::bind(("127.0.0.1", port)).await;
-        match listener {
-            Ok(listener) => {
-                let _ = axum::serve(listener, router).await;
-            }
-            Err(_) => {
-                // Port busy (another Huly Desk instance). Skip silently:
-                // the UI can surface the state via mcp_get_config probe.
+        // First free port from 41790; another Huly Desk instance or a
+        // foreign app may hold the base port.
+        for offset in 0..MAX_ATTEMPTS {
+            let port = BASE_PORT + offset;
+            match tokio::net::TcpListener::bind(("127.0.0.1", port)).await {
+                Ok(listener) => {
+                    state.port.store(port, Ordering::Relaxed);
+                    let _ = axum::serve(listener, router).await;
+                    return;
+                }
+                Err(_) => continue,
             }
         }
     });
