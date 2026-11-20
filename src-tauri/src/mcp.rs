@@ -258,11 +258,8 @@ pub fn mcp_client_status(client: String) -> Result<ClientStatus, String> {
 fn write_json_client(path: &std::path::Path, server: serde_json::Value) -> Result<String, String> {
     let mut root: serde_json::Value = if path.exists() {
         let raw = std::fs::read_to_string(path).map_err(|e| format!("读取失败：{e}"))?;
-        serde_json::from_str(&raw).map_err(|_| "现有配置不是有效的 JSON，已取消写入。".to_string())?
+        parse_json_config(&raw)?
     } else {
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| format!("创建目录失败：{e}"))?;
-        }
         serde_json::json!({})
     };
     if !root.is_object() {
@@ -272,39 +269,33 @@ fn write_json_client(path: &std::path::Path, server: serde_json::Value) -> Resul
         let backup = path.with_extension("json.hulydesk-backup");
         std::fs::copy(path, &backup).map_err(|e| format!("备份失败：{e}"))?;
     }
-    root.as_object_mut()
-        .unwrap()
-        .entry("mcpServers")
-        .or_insert_with(|| serde_json::json!({}))
-        .as_object_mut()
-        .ok_or("mcpServers 不是对象，已取消写入。".to_string())?
-        .insert("huly-desk".into(), server);
+    merge_server(&mut root, server)?;
     let text = serde_json::to_string_pretty(&root).map_err(|e| e.to_string())?;
     std::fs::write(path, text).map_err(|e| format!("写入失败：{e}"))?;
     Ok(format!("已写入 {}（原文件已备份）", path.display()))
 }
 
+fn parse_json_config(raw: &str) -> Result<serde_json::Value, String> {
+    serde_json::from_str(raw).map_err(|_| "现有配置不是有效的 JSON，已取消写入。".to_string())
+}
+
+fn merge_server(root: &mut serde_json::Value, server: serde_json::Value) -> Result<(), String> {
+    root.as_object_mut()
+        .ok_or("现有配置不是 JSON 对象，已取消写入。".to_string())?
+        .entry("mcpServers")
+        .or_insert_with(|| serde_json::json!({}))
+        .as_object_mut()
+        .ok_or("mcpServers 不是对象，已取消写入。".to_string())?
+        .insert("huly-desk".into(), server);
+    Ok(())
+}
+
 fn write_codex_config(url: &str, token: &str) -> Result<String, String> {
     let path = toml_config_path()?;
-    let block = format!(
-        "\n[mcp_servers.huly_desk]\nurl = \"{url}\"\nhttp_headers = {{ \"Authorization\" = \"Bearer {token}\" }}\n"
-    );
+    let block = codex_block(url, token);
     let existing = if path.exists() { std::fs::read_to_string(&path).map_err(|e| e.to_string())? } else { String::new() };
     if existing.contains("[mcp_servers.huly_desk]") {
-        // Replace the existing table (up to the next table header or EOF).
-        let mut out = String::new();
-        let mut skipping = false;
-        for line in existing.lines() {
-            if line.trim_start().starts_with("[mcp_servers.huly_desk]") {
-                skipping = true;
-                continue;
-            }
-            if skipping && line.trim_start().starts_with('[') && line.trim_start().ends_with(']') {
-                skipping = false;
-            }
-            if !skipping { out.push_str(line); out.push('\n'); }
-        }
-        let out = out + &block;
+        let out = replace_codex_table(&existing, &block);
         let backup = path.with_extension("toml.hulydesk-backup");
         std::fs::copy(&path, &backup).map_err(|e| format!("备份失败：{e}"))?;
         std::fs::write(&path, out).map_err(|e| format!("写入失败：{e}"))?;
@@ -353,6 +344,32 @@ pub fn mcp_add_to_client(app: AppHandle, client: String, url: String, token: Str
     }
 }
 
+fn codex_block(url: &str, token: &str) -> String {
+    format!(
+        "\n[mcp_servers.huly_desk]\nurl = \"{url}\"\nhttp_headers = {{ \"Authorization\" = \"Bearer {token}\" }}\n"
+    )
+}
+
+/// Replace the huly_desk table (up to the next table header or EOF), keeping others.
+fn replace_codex_table(existing: &str, block: &str) -> String {
+    let mut out = String::new();
+    let mut skipping = false;
+    for line in existing.lines() {
+        if line.trim_start().starts_with("[mcp_servers.huly_desk]") {
+            skipping = true;
+            continue;
+        }
+        if skipping && line.trim_start().starts_with('[') && line.trim_start().ends_with(']') {
+            skipping = false;
+        }
+        if !skipping {
+            out.push_str(line);
+            out.push('\n');
+        }
+    }
+    out + block
+}
+
 fn base64_encode(data: &[u8]) -> String {
     const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut out = String::new();
@@ -378,5 +395,58 @@ fn open_url(_app: &AppHandle, url: &str) -> Result<String, String> {
         Ok(output) if output.status.success() => Ok("已打开 Cursor，请在 Cursor 中确认安装。".to_string()),
         Ok(output) => Err(format!("打开失败：{}", String::from_utf8_lossy(&output.stderr))),
         Err(e) => Err(format!("打开失败：{e}")),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn server() -> serde_json::Value {
+        serde_json::json!({ "url": "http://127.0.0.1:41790/mcp", "headers": { "Authorization": "Bearer t" } })
+    }
+
+    #[test]
+    fn merges_into_existing_json_keeping_other_servers() {
+        let mut root = parse_json_config(r#"{"mcpServers":{"other":{"url":"x"}},"theme":"dark"}"#).unwrap();
+        merge_server(&mut root, server()).unwrap();
+        assert_eq!(root["mcpServers"]["other"]["url"], "x");
+        assert_eq!(root["mcpServers"]["huly-desk"]["url"], "http://127.0.0.1:41790/mcp");
+        assert_eq!(root["theme"], "dark");
+    }
+
+    #[test]
+    fn creates_mcpservers_in_empty_object() {
+        let mut root = parse_json_config("{}").unwrap();
+        merge_server(&mut root, server()).unwrap();
+        assert_eq!(root["mcpServers"]["huly-desk"]["url"], "http://127.0.0.1:41790/mcp");
+    }
+
+    #[test]
+    fn rejects_invalid_json_instead_of_overwriting() {
+        assert!(parse_json_config("{ broken").is_err());
+    }
+
+    #[test]
+    fn codex_table_replacement_keeps_other_tables() {
+        let existing = "model = \"gpt-5\"\n\n[mcp_servers.huly_desk]\nurl = \"old\"\n\n[profiles.x]\ny = 1\n";
+        let out = replace_codex_table(existing, &codex_block("http://127.0.0.1:41790/mcp", "t"));
+        assert!(out.contains("model = \"gpt-5\""));
+        assert!(out.contains("url = \"http://127.0.0.1:41790/mcp\""));
+        assert!(!out.contains("\"old\""));
+        assert!(out.contains("[profiles.x]"));
+        assert!(out.contains("y = 1"));
+    }
+
+    #[test]
+    fn codex_append_when_missing() {
+        let existing = "model = \"gpt-5\"\n";
+        let out = existing.to_string() + &codex_block("http://127.0.0.1:41790/mcp", "t");
+        assert!(out.starts_with("model = \"gpt-5\"\n\n[mcp_servers.huly_desk]"));
+    }
+
+    #[test]
+    fn base64_matches_standard() {
+        assert_eq!(base64_encode(b"{\"url\":\"http://127.0.0.1:41790/mcp\"}"), "eyJ1cmwiOiJodHRwOi8vMTI3LjAuMC4xOjQxNzkwL21jcCJ9");
     }
 }
