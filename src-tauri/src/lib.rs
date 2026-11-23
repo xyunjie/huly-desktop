@@ -1,6 +1,7 @@
 mod keychain;
 mod mcp;
 mod probe;
+mod update;
 
 use tauri::Manager;
 
@@ -14,6 +15,7 @@ pub fn run() {
                 let _: Result<(), _> = window.set_focus();
             }
         }))
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
             keychain::keychain_save_session,
             keychain::keychain_load_session,
@@ -22,12 +24,14 @@ pub fn run() {
             keychain::keychain_load_ca,
             keychain::keychain_clear_ca,
             probe::probe_server,
+            update::check_for_updates,
+            update::install_update,
             mcp::mcp_get_config,
             mcp::mcp_regenerate_token,
             mcp::mcp_respond,
             mcp::mcp_bind_window,
-            mcp::mcp_client_status,
-            mcp::mcp_add_to_client
+            mcp::clients::mcp_client_status,
+            mcp::clients::mcp_add_to_client
         ])
         .setup(|app| {
             mcp::spawn(app.handle().clone());

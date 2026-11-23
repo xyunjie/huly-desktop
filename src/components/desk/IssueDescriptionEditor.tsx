@@ -337,12 +337,6 @@ export default function IssueDescriptionEditor(props: Props) {
   return (
     <div className={commentMode ? "hd-rich-description hd-rich-comment" : "hd-rich-description"} onBlur={(event) => {
       if (!commentMode && !event.currentTarget.contains(event.relatedTarget)) void flush();
-    }} onKeyDown={(event) => {
-      if ((event.metaKey || event.ctrlKey) && (event.key === "Enter" || (!commentMode && event.key.toLowerCase() === "s"))) {
-        event.preventDefault();
-        if (commentMode) void submit();
-        else void flush();
-      }
     }}>
       <div ref={host} className="hd-rich-description-body" hidden={!ready} />
       {!ready && error && props.markdown.trim() ? (
@@ -417,7 +411,7 @@ export default function IssueDescriptionEditor(props: Props) {
           </div>
           {commentMode ? <div className="hd-comment-send">
             {uploadBusy ? <span className="hd-rich-save-status" role="status">正在上传…</span> : null}
-            <Button type="text" title="发表评论（⌘/Ctrl + Enter）" aria-label="发表评论" icon={<SendOutlined />}
+            <Button type="text" title="发表评论" aria-label="发表评论" icon={<SendOutlined />}
               loading={sending} disabled={!hasContent || disabled || uploadBusy} onClick={() => void submit()} />
           </div> : <span className="hd-rich-save-status" role="status">{uploadBusy ? "正在上传…" : status}</span>}
         </div>

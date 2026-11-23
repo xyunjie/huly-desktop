@@ -298,6 +298,13 @@ export class MockDeskClient implements DeskClient {
     };
   }
 
+  async findIssueByIdentifier(identifier: string): Promise<Issue | null> {
+    const projects = new Set(this.workspaceProjects().map((project) => project.id));
+    const key = identifier.toUpperCase();
+    const issue = this.issues.find((item) => projects.has(item.projectId) && (item.identifier.toUpperCase() === key || item.id === identifier));
+    return issue ? clone(issue) : null;
+  }
+
   async listAssigned(personId: string): Promise<Issue[]> {
     this.assertWorkspace();
     await this.pause();

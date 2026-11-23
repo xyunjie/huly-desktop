@@ -1,5 +1,5 @@
 import { BellOutlined, PlusOutlined, SyncOutlined } from "@ant-design/icons";
-import { Badge, Button, Space, Tag, Tooltip } from "antd";
+import { Badge, Button, Tag, Tooltip } from "antd";
 import { useEffect, useRef, useState } from "react";
 import { DeskScreen } from "@/components/desk/DeskScreen";
 import type { DeskNav } from "@/components/desk/Sidebar";
@@ -87,16 +87,15 @@ interface WorkspaceCache {
 
 export default function App() {
   const clientRef = useRef<DeskClient | null>(null);
+  const mcpWorkspace = useRef<{ client: DeskClient } | null>(null);
   const savedRef = useRef<StoredSession | null>(null);
   const autoTried = useRef(false);
-  const searchRef = useRef<HTMLInputElement>(null);
   const [phase, setPhase] = useState<"login" | "pick-workspace" | "desk">("login");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [initialCa, setInitialCa] = useState("");
   const [account, setAccount] = useState<AccountSession | null>(null);
   const [desk, setDesk] = useState<DeskModel | null>(null);
-  const [paletteOpen, setPaletteOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [createParentId, setCreateParentId] = useState<string | null>(null);
   const [metaModalOpen, setMetaModalOpen] = useState(false);
@@ -138,58 +137,7 @@ export default function App() {
   }, [mockDefault]);
 
   // Local MCP server: forward AI tool calls to the live client.
-  useEffect(() => connectMcpBridge(() => clientRef.current), []);
-
-  useEffect(() => {
-    function onKey(event: KeyboardEvent) {
-      const target = event.target as HTMLElement | null;
-      const typing = target?.tagName === "INPUT" || target?.tagName === "TEXTAREA" || target?.isContentEditable;
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
-        event.preventDefault();
-        if (phase === "desk") setPaletteOpen(true);
-        return;
-      }
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "n") {
-        event.preventDefault();
-        if (phase === "desk" && !offlineReadOnly) {
-          setCreateParentId(null);
-          setCreateOpen(true);
-        }
-        return;
-      }
-      if (event.key === "Escape") {
-        setPaletteOpen(false);
-        setCreateOpen(false);
-        setCreateParentId(null);
-        setNotificationsOpen(false);
-        return;
-      }
-      if (phase !== "desk" || typing) return;
-      const key = event.key.toLowerCase();
-      if (key === "c" && !offlineReadOnly) {
-        setCreateParentId(null);
-        setCreateOpen(true);
-      }
-      if (key === "/") {
-        event.preventDefault();
-        searchRef.current?.focus();
-      }
-      if (key === "r") {
-        event.preventDefault();
-        triggerManualRefresh();
-      }
-      if (key === "b" && deskRef.current?.nav === "project" && deskRef.current.detail === "closed") {
-        event.preventDefault();
-        setDesk((current) =>
-          current
-            ? { ...current, view: current.view === "list" ? "board" : "list", detail: "closed" }
-            : current,
-        );
-      }
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [phase, offlineReadOnly]);
+  useEffect(() => connectMcpBridge(() => mcpWorkspace.current), []);
 
   useEffect(() => {
     const debug = {
@@ -449,6 +397,7 @@ export default function App() {
   async function switchWorkspace(workspaceUrl: string) {
     const client = clientRef.current;
     if (!client) return;
+    mcpWorkspace.current = null;
     projectCache.current.clear();
     templateCache.current.clear();
     mineCache.current = null;
@@ -475,6 +424,7 @@ export default function App() {
   }
 
   function openDesk(client: DeskClient, session: Session) {
+    mcpWorkspace.current = { client };
     notificationsGate.current.next();
     lastNotificationRequest.current = 0;
     setNotifications([]);
@@ -1000,31 +950,8 @@ export default function App() {
     void loadWorkspace(gen, current.session);
   }
 
-  function runCommand(id: string) {
-    const current = deskRef.current;
-    if (!current) return;
-    if (id === "create" && !offlineReadOnly) {
-      setCreateParentId(null);
-      setCreateOpen(true);
-    }
-    if (id === "board" || id === "list") {
-      setDesk({ ...current, view: id, detail: "closed", nav: current.nav === "project" || current.nav === "mine" ? current.nav : "project" });
-    }
-    if (id === "mine") void showMine();
-    if (id === "projects") showProjects();
-    if (id === "notifications") {
-      setNotificationsOpen(true);
-      void refreshNotifications(false);
-    }
-    if (id === "milestones") setMetaModalOpen(true);
-    if (id === "templates") setTemplateModalOpen(true);
-    if (id === "refresh") triggerManualRefresh();
-    if (id === "search") searchRef.current?.focus();
-    if (id === "disconnect") void logout();
-    if (id.startsWith("issue:")) void selectIssue(id.slice("issue:".length));
-  }
-
   async function logout() {
+    mcpWorkspace.current = null;
     notificationsGate.current.next();
     await clientRef.current?.disconnect();
     clientRef.current = null;
@@ -1060,7 +987,7 @@ export default function App() {
 
   const topbarStatus =
     phase === "desk" && desk ? (
-      <Space size={4}>
+      <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
         <Tooltip
           title={
             offlineReadOnly
@@ -1072,28 +999,16 @@ export default function App() {
         >
           <Tag
             color={offlineReadOnly ? "warning" : "success"}
-            icon={offlineReadOnly ? undefined : <SyncOutlined />}
-            style={{ marginInlineEnd: 2, fontSize: 11, lineHeight: "18px", paddingInline: 6 }}
+            icon={offlineReadOnly ? undefined : <SyncOutlined spin={!offlineReadOnly && desk.session.mode !== "mock"} />}
+            style={{ marginInlineEnd: 0, fontSize: 11, lineHeight: "18px", paddingInline: 6, borderRadius: 999 }}
           >
             {offlineReadOnly ? "离线只读" : "实时同步"}
           </Tag>
         </Tooltip>
 
-        <Button
-          size="small"
-          type="text"
-          icon={<PlusOutlined />}
-          disabled={offlineReadOnly}
-          onClick={() => {
-            setCreateParentId(null);
-            setCreateOpen(true);
-          }}
-          style={{ height: 22, fontSize: 12 }}
-        >
-          新建任务
-        </Button>
+        <span aria-hidden style={{ width: 1, height: 14, background: "#e8e8e8", margin: "0 6px" }} />
 
-        <Badge count={unreadNotifications} size="small" offset={[-2, 3]}>
+        <Badge count={unreadNotifications} size="small" offset={[-4, 4]}>
           <Button
             size="small"
             type="text"
@@ -1103,11 +1018,24 @@ export default function App() {
               setNotificationsOpen(true);
               void refreshNotifications(false);
             }}
-            style={{ height: 22 }}
+            style={{ height: 26, width: 26, padding: 0 }}
           />
         </Badge>
 
-      </Space>
+        <Button
+          size="small"
+          type="primary"
+          icon={<PlusOutlined />}
+          disabled={offlineReadOnly}
+          onClick={() => {
+            setCreateParentId(null);
+            setCreateOpen(true);
+          }}
+          style={{ height: 26, fontSize: 12, borderRadius: 6, paddingInline: 10 }}
+        >
+          新建任务
+        </Button>
+      </div>
     ) : null;
 
   return (
@@ -1156,7 +1084,6 @@ export default function App() {
           selectedId={desk.selectedId}
           detail={desk.detail}
           error={error}
-          paletteOpen={paletteOpen}
           createOpen={createOpen}
           createParentId={createParentId}
           addMemberProject={addMemberProject}
@@ -1365,12 +1292,10 @@ export default function App() {
           onTemplateModalOpen={setTemplateModalOpen}
           onMove={(issueId, statusId) => void updateIssue(issueId, { statusId })}
           onLogout={() => void logout()}
-          onPalette={setPaletteOpen}
           onCreateOpen={(open) => {
             if (!open) setCreateParentId(null);
             setCreateOpen(open);
           }}
-          onCommand={runCommand}
           onRefresh={triggerManualRefresh}
           onSwitchWorkspace={(workspaceUrl) => void switchWorkspace(workspaceUrl)}
           onAddMemberOpen={setAddMemberProject}
@@ -1447,7 +1372,6 @@ export default function App() {
             if (!client?.readDescriptionSnapshot || offlineReadOnly) throw new Error("历史描述暂不可用。");
             return client.readDescriptionSnapshot(ref);
           }}
-          searchRef={searchRef}
         />
       ) : (
         <LoginScreen mock={mockDefault} busy={busy} error={error} initialCa={initialCa} onEnter={onSubmit} />

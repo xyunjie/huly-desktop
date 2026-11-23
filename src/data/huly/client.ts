@@ -15,7 +15,7 @@ import {
   mapAccountWorkspace,
   withWorkspaceRenewal,
 } from "@/domain/session";
-import type { DeskClient } from "@/data/client";
+import { PROJECT_ISSUE_LIMIT, type DeskClient } from "@/data/client";
 import { canChangeWorkspaceRole, canRemoveWorkspaceMember } from "@/domain/members";
 import {
   emailFromSocial,
@@ -452,7 +452,7 @@ export class HulyDeskClient implements DeskClient {
     const rawIssues = [...await client.findAll<RawIssue>(
       plugins.tracker.class.Issue,
       { space: projectId },
-      { limit: 500, sort: { rank: plugins.sorting.Ascending } },
+      { limit: PROJECT_ISSUE_LIMIT, sort: { rank: plugins.sorting.Ascending } },
     )];
     if (targetIssueId && !rawIssues.some((issue) => issue._id === targetIssueId)) {
       const target = await client.findOne<RawIssue>(plugins.tracker.class.Issue, { _id: targetIssueId, space: projectId });
@@ -494,6 +494,16 @@ export class HulyDeskClient implements DeskClient {
       labels: mapLabels(tags),
       issues,
     };
+  }
+
+  async findIssueByIdentifier(identifier: string): Promise<Issue | null> {
+    const api = this.api();
+    const issueClass = this.plugins().tracker.class.Issue;
+    const uppercase = identifier.toUpperCase();
+    const issue = await api.findOne<RawIssue>(issueClass, { identifier })
+      ?? (identifier === uppercase ? undefined : await api.findOne<RawIssue>(issueClass, { identifier: uppercase }))
+      ?? await api.findOne<RawIssue>(issueClass, { _id: identifier });
+    return issue ? mapIssue(issue, plainDescription(issue.description)) : null;
   }
 
   async listAssigned(personId: string): Promise<Issue[]> {

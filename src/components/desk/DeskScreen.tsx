@@ -1,5 +1,4 @@
 import { Alert, Button, Input, Layout, Segmented, Select, Skeleton, Space, Typography } from "antd";
-import { useRef, type RefObject } from "react";
 import { RenderBoundary } from "@/components/RenderBoundary";
 import { filterIssues, hasActiveFilters, isTopLevelIssue } from "@/domain/filters";
 import { formatCommentTime } from "@/domain/format";
@@ -31,7 +30,6 @@ import {
   type WorkspaceMember,
 } from "@/domain/types";
 import type { WorkspaceRole } from "@/domain/roles";
-import { CommandPalette } from "./CommandPalette";
 import { CreateIssueDialog } from "./CreateIssueDialog";
 import { IssueBoard } from "./IssueBoard";
 import { IssueDetail } from "./IssueDetail";
@@ -89,7 +87,6 @@ export function DeskScreen(props: {
   selectedId: string | null;
   detail: "side" | "wide" | "closed";
   error: string | null;
-  paletteOpen: boolean;
   createOpen: boolean;
   createParentId: string | null;
   addMemberProject: Project | null;
@@ -127,9 +124,7 @@ export function DeskScreen(props: {
   onTemplateModalOpen: (open: boolean) => void;
   onMove: (issueId: string, statusId: string) => void;
   onLogout: () => void;
-  onPalette: (open: boolean) => void;
   onCreateOpen: (open: boolean) => void;
-  onCommand: (id: string) => void;
   onRefresh: () => void;
   onSwitchWorkspace: (workspaceUrl: string) => void;
   onAddMemberOpen: (project: Project | null) => void;
@@ -145,10 +140,7 @@ export function DeskScreen(props: {
   onResolveImage?: (src: string) => Promise<string | null>;
   onLoadEditorTemplates?: () => Promise<EditorTemplate[]>;
   onReadDescriptionSnapshot?: (ref: string) => Promise<string>;
-  searchRef?: RefObject<{ focus: () => void } | null>;
 }) {
-  const localSearch = useRef<{ focus: () => void } | null>(null);
-  const searchRef = props.searchRef ?? localSearch;
   const immersive = props.nav === "project";
   const selected = props.issues.find((issue) => issue.id === props.selectedId) ?? null;
   const showWork = props.nav === "project" || props.nav === "mine";
@@ -226,9 +218,6 @@ export function DeskScreen(props: {
             ]}
           />
           <Input
-            ref={(node) => {
-              searchRef.current = node;
-            }}
             value={props.filters.search}
             placeholder="搜索任务标题或编号"
             style={{ width: 180 }}
@@ -342,9 +331,6 @@ export function DeskScreen(props: {
           </PageTitle>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8, padding: "8px 20px", alignItems: "center" }}>
             <Input
-              ref={(node) => {
-                searchRef.current = node;
-              }}
               value={props.filters.search}
               placeholder="搜索任务标题或编号"
               style={{ width: 220 }}
@@ -497,13 +483,6 @@ export function DeskScreen(props: {
         defaultParentId={props.createParentId}
         onOpenChange={props.onCreateOpen}
         onCreate={props.onCreate}
-      />
-      <CommandPalette
-        open={props.paletteOpen}
-        issues={props.issues}
-        view={props.view}
-        onOpenChange={props.onPalette}
-        onRun={props.onCommand}
       />
       <ProjectMetaModal
         open={props.metaModalOpen}

@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { Channel, invoke } from "@tauri-apps/api/core";
 import { parseServerConfig } from "@/domain/config";
 import { buildSessionSecret, parseSessionSecret, type StoredSession } from "@/domain/secrets";
 import type { ServerEndpoints } from "@/domain/types";
@@ -6,6 +6,26 @@ import { configJsonUrl } from "@/domain/url";
 
 export function isTauri(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+}
+
+export interface UpdateCheck {
+  currentVersion: string;
+  latestVersion: string | null;
+  updateAvailable: boolean;
+  installUnavailable: string | null;
+}
+
+export type UpdateProgress =
+  | { phase: "downloading"; downloaded: number; total: number | null }
+  | { phase: "installing" };
+
+export function checkForUpdates(): Promise<UpdateCheck> {
+  return invoke<UpdateCheck>("check_for_updates");
+}
+
+export function installUpdate(version: string, onProgress: (progress: UpdateProgress) => void): Promise<void> {
+  const channel = new Channel<UpdateProgress>(onProgress);
+  return invoke("install_update", { version, onProgress: channel });
 }
 
 export async function windowCommand(action: "close" | "minimize" | "toggleMaximize"): Promise<void> {

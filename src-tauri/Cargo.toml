@@ -23,6 +23,11 @@ axum = "0.8"
 tokio = { version = "1", features = ["time", "net", "sync", "rt-multi-thread"] }
 rand = "0.9"
 tauri-plugin-single-instance = "2"
+jsonc-parser = { version = "0.34", features = ["cst", "serde_json"] }
+toml_edit = "0.25"
+tempfile = "3"
+semver = "1"
+tauri-plugin-updater = "2.14.1"
 
 [profile.release]
 codegen-units = 1

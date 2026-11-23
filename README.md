@@ -68,6 +68,14 @@ pnpm tauri build --target universal-apple-darwin --bundles dmg
 
 如果无法连接，先检查实例是否可访问，以及入口地址的 `/config.json` 是否能正常读取。自建实例的账户服务和协作服务也必须能从客户端访问。若使用私有 CA，请确保系统信任该证书；若看不到某个工作区，请在 Huly 网页端确认账号权限。
 
+## 在 AI 客户端使用 MCP
+
+在 Huly Desk 桌面端连接工作区，打开侧栏「MCP 管理」。对 Claude Code、Codex、OpenCode 或 Cursor 点击「一键添加」，然后在对应客户端确认能看到 `list_projects` 等工具。「配置与服务一致」只表示本机配置匹配，不代表客户端已经连接。Claude Desktop 暂不支持一键连接。
+
+Huly Desk 必须保持打开；工具使用当前连接的工作区和账号权限，既能读取任务，也能修改状态和发表评论。切换工作区后，请确认目标再发起写入。
+
+重新生成令牌会立即撤销旧令牌。若更换令牌或服务端口发生变化，请为客户端点「更新配置」并重新连接。应用会备份被修改的配置；请勿分享或提交包含令牌的文件。若 Claude Code 中同名的旧项目配置覆盖了用户级配置，请在该项目的 MCP 管理界面移除旧条目。
+
 ## 开发检查
 
 ```bash
@@ -78,6 +86,17 @@ pnpm build
 
 ## 发布版本
 
+桌面端右上角的「检查更新」会查询 GitHub Releases 的最新公开正式版。有签名新版时，点击「下载并安装」，应用会下载对应安装包、验签、安装并重启，不需要打开浏览器。开发模式和未内置更新公钥的旧安装包不支持应用内安装；首次迁移到签名版需要先安装一次。Linux 的 `.deb` 更新可能需要系统授予安装权限。
+
+首次发布前，使用 Tauri CLI 生成一套专用更新签名密钥，并安全保存私钥：
+
+```bash
+mkdir -p "$HOME/.tauri"
+pnpm tauri signer generate -w "$HOME/.tauri/huly-desk.key"
+```
+
+在 GitHub 仓库的 **Settings → Secrets and variables → Actions** 中，添加变量 `TAURI_UPDATER_PUBLIC_KEY`（`.key.pub` 文件内容）和秘密 `TAURI_SIGNING_PRIVATE_KEY`（`.key` 文件内容）。如设置了密钥密码，再添加 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` 秘密。不要提交私钥；后续版本必须使用同一套密钥签名。
+
 正式版本从 `1.0.0` 开始。在需要发布的提交上创建并推送 `vX.Y.Z` 标签，例如：
 
 ```bash
@@ -85,7 +104,7 @@ git tag -a v1.0.0 -m "Huly Desk v1.0.0"
 git push origin v1.0.0
 ```
 
-GitHub Actions 会使用标签中的版本号并行构建 macOS、Windows 和 Linux。三端全部成功后，工作流会创建 GitHub Release 并附上安装包和 `SHA256SUMS.txt`；在 Actions 页面手动运行工作流只生成构建产物，不发布版本。当前安装包未使用开发者证书签名，macOS 版本也未公证。
+GitHub Actions 会使用标签中的版本号并行构建 macOS、Windows 和 Linux。三端全部成功后，工作流会创建 GitHub Release 并附上安装包、更新签名、`latest.json` 和 `SHA256SUMS.txt`。在 Actions 页面手动运行只生成构建产物，不签发更新或发布版本。Tauri 的更新签名和系统开发者证书是两回事；当前安装包未使用开发者证书，macOS 版本也未公证。
 
 欢迎提交 Issue 或 Pull Request。报告连接或界面问题时，请注明平台、Huly 版本和复现步骤，并隐去令牌、密码及私有服务器地址。
 

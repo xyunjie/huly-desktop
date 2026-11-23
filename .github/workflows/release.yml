@@ -26,14 +26,19 @@ jobs:
             runner: macos-15
             target: universal-apple-darwin
             rust-targets: aarch64-apple-darwin,x86_64-apple-darwin
-            bundles: dmg
-            assets: src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
+            bundles: app,dmg
+            assets: |
+              src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
+              src-tauri/target/universal-apple-darwin/release/bundle/macos/*.app.tar.gz
+              src-tauri/target/universal-apple-darwin/release/bundle/macos/*.app.tar.gz.sig
           - platform: windows
             runner: windows-latest
             target: x86_64-pc-windows-msvc
             rust-targets: x86_64-pc-windows-msvc
             bundles: nsis
-            assets: src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
+            assets: |
+              src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
+              src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe.sig
           - platform: linux
             runner: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
@@ -41,7 +46,9 @@ jobs:
             bundles: deb,appimage
             assets: |
               src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/deb/*.deb
+              src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/deb/*.deb.sig
               src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/appimage/*.AppImage
+              src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/appimage/*.AppImage.sig
 
     steps:
       - uses: actions/checkout@v4
@@ -81,14 +88,31 @@ jobs:
         run: node scripts/check-release-version.mjs "$RELEASE_TAG" --apply
 
       - name: Run Rust unit tests
-        run: cargo test --manifest-path src-tauri/Cargo.toml
+        run: cargo test --locked --manifest-path src-tauri/Cargo.toml
 
       - run: pnpm install --frozen-lockfile --node-linker=hoisted
       - run: pnpm typecheck
       - run: pnpm test
+      - run: node --test scripts/test-updater-manifest.mjs
 
       - name: Build the installer
-        run: pnpm tauri build --ci --target ${{ matrix.target }} --bundles ${{ matrix.bundles }} -- --locked
+        shell: bash
+        env:
+          TAURI_UPDATER_PUBLIC_KEY: ${{ vars.TAURI_UPDATER_PUBLIC_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ github.ref_type == 'tag' && secrets.TAURI_SIGNING_PRIVATE_KEY || '' }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ github.ref_type == 'tag' && secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD || '' }}
+        run: |
+          set -euo pipefail
+          args=(--ci --target '${{ matrix.target }}' --bundles '${{ matrix.bundles }}')
+          if [[ "$GITHUB_REF_TYPE" == 'tag' ]]; then
+            if [[ -z "$TAURI_UPDATER_PUBLIC_KEY" || -z "$TAURI_SIGNING_PRIVATE_KEY" ]]; then
+              echo 'Set TAURI_UPDATER_PUBLIC_KEY (repository variable) and TAURI_SIGNING_PRIVATE_KEY (Actions secret) before publishing a release.' >&2
+              exit 1
+            fi
+            config=$(node -p 'JSON.stringify({ bundle: { createUpdaterArtifacts: true }, plugins: { updater: { pubkey: process.env.TAURI_UPDATER_PUBLIC_KEY.trim(), requireSignedVersion: true } } })')
+            args+=(--config "$config")
+          fi
+          pnpm tauri build "${args[@]}" -- --locked
 
       - uses: actions/upload-artifact@v4
         with:
@@ -105,28 +129,39 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
       - uses: actions/download-artifact@v4
         with:
           pattern: huly-desk-*
           path: downloaded
 
-      - name: Publish installers and checksums
+      - name: Publish installers, checksums and updater manifest
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ github.ref_name }}
           REPOSITORY: ${{ github.repository }}
+          TAURI_UPDATER_PUBLIC_KEY: ${{ vars.TAURI_UPDATER_PUBLIC_KEY }}
         shell: bash
         run: |
           set -euo pipefail
           mkdir release-assets
           while IFS= read -r -d '' source; do
-            asset="release-assets/${source##*/}"
+            # GitHub can rename assets when uploading spaces or special characters.
+            name=$(printf '%s' "${source##*/}" | LC_ALL=C tr -c 'A-Za-z0-9._-' '.')
+            asset="release-assets/$name"
             if [[ -e "$asset" ]]; then
               echo "Duplicate release asset: $asset" >&2
               exit 1
             fi
             cp "$source" "$asset"
-          done < <(find downloaded -type f \( -name '*.dmg' -o -name '*.exe' -o -name '*.deb' -o -name '*.AppImage' \) -print0)
+          done < <(find downloaded -type f \( -name '*.dmg' -o -name '*.exe' -o -name '*.deb' -o -name '*.AppImage' -o -name '*.app.tar.gz' -o -name '*.sig' \) -print0)
+
+          node scripts/write-updater-manifest.mjs release-assets "$REPOSITORY" "$RELEASE_TAG"
 
           cd release-assets
           shopt -s nullglob
@@ -138,11 +173,11 @@ jobs:
             echo 'One or more platform installers are missing.' >&2
             exit 1
           fi
-          installers=( "${macos[@]}" "${windows[@]}" "${debian[@]}" "${appimage[@]}" )
+          installers=( "${macos[@]}" "${windows[@]}" "${debian[@]}" "${appimage[@]}" *.app.tar.gz )
           sha256sum -- "${installers[@]}" > SHA256SUMS.txt
           if gh release view "$RELEASE_TAG" --repo "$REPOSITORY" >/dev/null 2>&1; then
             echo "Release $RELEASE_TAG already exists; not replacing its assets."
             exit 0
           fi
           gh release create "$RELEASE_TAG" --repo "$REPOSITORY" --verify-tag --generate-notes \
-            --title "Huly Desk $RELEASE_TAG" "${installers[@]}" SHA256SUMS.txt
+            --title "Huly Desk $RELEASE_TAG" "${installers[@]}" *.sig latest.json SHA256SUMS.txt

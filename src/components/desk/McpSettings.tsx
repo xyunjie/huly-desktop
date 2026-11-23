@@ -1,66 +1,25 @@
-import { CheckCircleFilled, DownOutlined, LinkOutlined, ReloadOutlined, RobotOutlined } from "@ant-design/icons";
-import { Button, Tag, Typography, message } from "antd";
+import { CheckCircleFilled, LinkOutlined, ReloadOutlined, RobotOutlined } from "@ant-design/icons";
+import { Alert, Button, Popconfirm, Tag, Typography, message } from "antd";
 import { useEffect, useState } from "react";
 import { PageTitle } from "./PageTitle";
-import { addMcpToClient, getMcpClientStatus, getMcpConfig, regenerateMcpToken, type McpClientStatus, type McpConfig } from "@/mcp/bridge";
+import { addMcpToClient, getMcpClientStatus, getMcpConfig, isMcpDesktop, regenerateMcpToken, type McpClientStatus, type McpConfig } from "@/mcp/bridge";
 
-interface ClientSpec {
-  key: string;
-  name: string;
-  desc: string;
-  path: string;
-  build: (url: string, token: string) => string;
-}
-
-const CLIENTS: ClientSpec[] = [
-  {
-    key: "claude-code",
-    name: "Claude Code",
-    desc: "通过命令行添加（用户级，所有项目可用）",
-    path: "终端执行",
-    build: (url, token) => `claude mcp add --transport http huly-desk ${url} --header "Authorization: Bearer ${token}"`,
-  },
-  {
-    key: "codex",
-    name: "Codex",
-    desc: "直接写入配置文件（修改前建议备份）",
-    path: "~/.codex/config.toml",
-    build: (url, token) => `[mcp_servers.huly_desk]\nurl = "${url}"\nhttp_headers = { "Authorization" = "Bearer ${token}" }`,
-  },
-  {
-    key: "opencode",
-    name: "OpenCode",
-    desc: "直接写入配置文件",
-    path: "opencode.json",
-    build: (url, token) =>
-      `{\n  "mcp": {\n    "huly-desk": {\n      "type": "remote",\n      "url": "${url}",\n      "headers": { "Authorization": "Bearer ${token}" }\n    }\n  }\n}`,
-  },
-  {
-    key: "cursor",
-    name: "Cursor",
-    desc: "直接写入配置文件",
-    path: "~/.cursor/mcp.json",
-    build: (url, token) => JSON.stringify({ mcpServers: { "huly-desk": { url, headers: { Authorization: `Bearer ${token}` } } } }, null, 2),
-  },
-  {
-    key: "claude-desktop",
-    name: "Claude Desktop",
-    desc: "直接写入配置文件（修改前建议备份）",
-    path: "~/Library/Application Support/Claude/claude_desktop_config.json",
-    build: (url, token) => JSON.stringify({ mcpServers: { "huly-desk": { url, headers: { Authorization: `Bearer ${token}` } } } }, null, 2),
-  },
-  {
-    key: "windsurf",
-    name: "Windsurf",
-    desc: "直接写入配置文件",
-    path: "~/.codeium/windsurf/mcp_config.json",
-    build: (url, token) => JSON.stringify({ mcpServers: { "huly-desk": { url, headers: { Authorization: `Bearer ${token}` } } } }, null, 2),
-  },
+const CLIENTS = [
+  { key: "claude-code", name: "Claude Code" },
+  { key: "codex", name: "Codex" },
+  { key: "opencode", name: "OpenCode" },
+  { key: "cursor", name: "Cursor" },
 ];
 
-function copy(text: string, label: string) {
-  void navigator.clipboard.writeText(text);
-  message.success(`已复制${label}。`);
+const STATUS = {
+  missing: { label: "未配置", color: "default" },
+  current: { label: "配置与服务一致", color: "success" },
+  stale: { label: "需要更新", color: "warning" },
+  invalid: { label: "无法读取配置", color: "error" },
+};
+
+function errorText(reason: unknown) {
+  return reason instanceof Error ? reason.message : String(reason);
 }
 
 function Label({ children }: { children: React.ReactNode }) {
@@ -100,30 +59,62 @@ export function McpPage() {
 }
 
 function McpSettings() {
+  const desktop = isMcpDesktop();
   const [config, setConfig] = useState<McpConfig | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [spinning, setSpinning] = useState(false);
-  const [expanded, setExpanded] = useState<string | null>(null);
-  const [statuses, setStatuses] = useState<Record<string, McpClientStatus | null>>({});
+  const [statuses, setStatuses] = useState<Record<string, McpClientStatus | undefined>>({});
   const [adding, setAdding] = useState<string | null>(null);
+  const [revision, setRevision] = useState(0);
 
   useEffect(() => {
-    void getMcpConfig().then(setConfig);
-  }, []);
+    if (!desktop) return;
+    let active = true;
+    void getMcpConfig().then(
+      (next) => { if (active) setConfig(next); },
+      (reason: unknown) => { if (active) setError(errorText(reason)); },
+    );
+    return () => { active = false; };
+  }, [desktop]);
 
-  const url = config?.port ? `http://127.0.0.1:${config.port}/mcp` : "";
+  const url = config ? `http://127.0.0.1:${config.port}/mcp` : "";
   const shortToken = config ? `${config.token.slice(0, 10)}…${config.token.slice(-4)}` : "";
+  const busy = spinning || adding !== null;
 
-  async function refreshStatuses() {
+  function refreshStatuses() {
     setStatuses({});
-    for (const client of CLIENTS) {
-      const status = await getMcpClientStatus(client.key);
-      setStatuses((current) => ({ ...current, [client.key]: status }));
-    }
+    setRevision((value) => value + 1);
   }
 
   useEffect(() => {
-    void refreshStatuses();
-  }, []);
+    if (!config) return;
+    let active = true;
+    void Promise.all(CLIENTS.map(async ({ key }) => {
+      try {
+        return [key, await getMcpClientStatus(key)] as const;
+      } catch (reason) {
+        return [key, { state: "invalid", path: "", note: errorText(reason) } satisfies McpClientStatus] as const;
+      }
+    })).then((entries) => { if (active) setStatuses(Object.fromEntries(entries)); });
+    return () => { active = false; };
+  }, [config, revision]);
+
+  async function rotateToken() {
+    setSpinning(true);
+    try {
+      const next = await regenerateMcpToken();
+      setStatuses({});
+      setError(null);
+      setConfig(next);
+      message.success("旧令牌已失效。请更新已配置的客户端。");
+    } catch (reason) {
+      message.error(errorText(reason));
+    } finally {
+      setSpinning(false);
+    }
+  }
+
+  if (!desktop) return <Alert type="info" message="MCP 服务仅在 Huly Desk 桌面端可用。" />;
 
   return (
     <div style={{ display: "grid", gap: 24 }} data-testid="mcp-settings">
@@ -132,56 +123,35 @@ function McpSettings() {
         <Typography.Title level={4} style={{ margin: 0 }}>
           MCP 服务
         </Typography.Title>
-        {config ? (
-          config.port ? (
-            <Tag icon={<CheckCircleFilled />} color="success">
-              运行中
-            </Tag>
-          ) : (
-            <Tag color="orange">正在启动</Tag>
-          )
-        ) : (
-          <Tag>仅桌面端可用</Tag>
-        )}
+        {config ? <Tag icon={<CheckCircleFilled />} color="success">运行中</Tag>
+          : error ? <Tag color="error">不可用</Tag> : <Tag>正在读取服务状态</Tag>}
       </header>
+
+      {error ? <Alert showIcon type="error" message="无法使用 MCP 服务" description={error} /> : null}
 
       <Card testid="mcp-server-card">
         <Row>
           <Label>说明</Label>
           <Typography.Text type="secondary">
-            让 AI 客户端读取任务、修改状态和添加评论。服务只监听本机 127.0.0.1，令牌保存在系统钥匙串。
+            让本机 AI 客户端读取当前工作区的任务、修改状态和添加评论。请保持 Huly Desk 打开并连接工作区；不要分享令牌或含令牌的配置文件。
           </Typography.Text>
         </Row>
         <Row>
           <Label>服务地址</Label>
-          <Typography.Text copyable={{ text: url }} style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: 13 }}>
+          <Typography.Text copyable={url ? { text: url } : false} style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: 13 }}>
             {url || "—"}
           </Typography.Text>
         </Row>
         <Row>
           <Label>访问令牌</Label>
-          <Typography.Text copyable={{ text: config?.token ?? "" }} style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: 13 }}>
+          <Typography.Text copyable={config && !spinning ? { text: config.token } : false} style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: 13 }}>
             {shortToken || "—"}
           </Typography.Text>
-          <Button
-            size="small"
-            icon={<ReloadOutlined />}
-            loading={spinning}
-            style={{ marginLeft: "auto" }}
-            onClick={async () => {
-              setSpinning(true);
-              const next = await regenerateMcpToken();
-              if (next) {
-                setConfig(next);
-                message.success("已重新生成令牌，旧令牌立即失效。");
-              } else {
-                message.error("生成失败。");
-              }
-              setSpinning(false);
-            }}
-          >
-            重新生成
-          </Button>
+          <Popconfirm title="重新生成 MCP 令牌？" description="旧令牌会立即失效，已配置的客户端需要更新。" okText="确认轮换" cancelText="取消" onConfirm={rotateToken}>
+            <Button size="small" icon={<ReloadOutlined aria-hidden />} loading={spinning} disabled={busy || (!config && !error)} style={{ marginLeft: "auto" }}>
+              重新生成
+            </Button>
+          </Popconfirm>
         </Row>
         <Row last>
           <Label>可用工具</Label>
@@ -196,13 +166,14 @@ function McpSettings() {
           AI 客户端
         </Typography.Title>
         <Typography.Text type="secondary">
-          一键添加会写入配置或拉起客户端确认；文件写入前自动备份。
+          点击「一键添加」即可配置，修改已有配置前会自动备份。
           <Button
             type="link"
             size="small"
-            icon={<ReloadOutlined />}
+            icon={<ReloadOutlined aria-hidden />}
             style={{ padding: "0 4px", height: "auto" }}
-            onClick={() => void refreshStatuses()}
+            disabled={!config || busy}
+            onClick={refreshStatuses}
           >
             刷新状态
           </Button>
@@ -211,88 +182,52 @@ function McpSettings() {
 
       <Card testid="mcp-clients-card">
         {CLIENTS.map((client, index) => {
-          const open = expanded === client.key;
           const status = statuses[client.key];
-          const busy = adding === client.key;
+          const badge = status && STATUS[status.state];
           return (
             <div key={client.key} style={{ borderBottom: index === CLIENTS.length - 1 ? "none" : "1px solid #f0f0f0" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 20px" }}>
                 <div style={{ minWidth: 0, flex: 1 }}>
                   <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
                     <span style={{ fontWeight: 600 }}>{client.name}</span>
-                    <span
+                    <span title={status?.path}
                       style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: 12, color: "#8e8e93", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
                     >
-                      {client.path}
+                      {status?.path}
                     </span>
-                    {status ? (
+                    {badge ? (
                       <Tag
-                        color={status.installed ? "success" : "default"}
-                        icon={status.installed ? <CheckCircleFilled /> : undefined}
+                        color={badge.color}
                         style={{ marginInlineEnd: 0, fontSize: 12 }}
                       >
-                        {status.installed ? "已添加" : "未添加"}
+                        {badge.label}
                       </Tag>
                     ) : null}
                   </div>
-                  <div style={{ fontSize: 12, color: "#8e8e93", marginTop: 2 }}>{client.desc}</div>
+                  {status?.note ? <Typography.Text type="danger">{status.note}</Typography.Text> : null}
                 </div>
                 <Button
                   size="small"
-                  type="text"
-                  onClick={() => copy(config && url ? client.build(url, config.token) : "", client.name)}
-                >
-                  复制配置
-                </Button>
-                <Button
-                  size="small"
                   type="primary"
-                  icon={<LinkOutlined />}
-                  loading={busy}
-                  disabled={!config || !url || status?.installed}
+                  icon={<LinkOutlined aria-hidden />}
+                  loading={adding === client.key}
+                  disabled={busy || !status || status.state === "current" || status.state === "invalid"}
                   onClick={async () => {
-                    if (!config || !url) return;
                     setAdding(client.key);
                     try {
-                      const result = await addMcpToClient(client.key, url, config.token);
+                      const result = await addMcpToClient(client.key);
                       message.success(result);
                     } catch (reason) {
-                      message.error(reason instanceof Error ? reason.message : String(reason));
+                      message.error(errorText(reason));
+                    } finally {
+                      refreshStatuses();
+                      setAdding(null);
                     }
-                    setAdding(null);
-                    const next = await getMcpClientStatus(client.key);
-                    setStatuses((current) => ({ ...current, [client.key]: next }));
                   }}
                 >
-                  一键添加
+                  {status?.state === "stale" ? "更新配置" : "一键添加"}
                 </Button>
-                <Button
-                  size="small"
-                  type="text"
-                  aria-label={`${open ? "收起" : "展开"} ${client.name} 配置`}
-                  aria-expanded={open}
-                  icon={<DownOutlined style={{ fontSize: 10, transition: "transform .2s", transform: open ? "rotate(180deg)" : "none" }} />}
-                  onClick={() => setExpanded(open ? null : client.key)}
-                />
               </div>
-              {open && config && url ? (
-                <pre
-                  style={{
-                    margin: "0 20px 12px",
-                    padding: "10px 12px",
-                    background: "#fafafa",
-                    border: "1px solid #f0f0f0",
-                    borderRadius: 8,
-                    fontSize: 12,
-                    lineHeight: 1.6,
-                    whiteSpace: "pre-wrap",
-                    wordBreak: "break-all",
-                    fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-                  }}
-                >
-                  {client.build(url, config.token)}
-                </pre>
-              ) : null}
             </div>
           );
         })}

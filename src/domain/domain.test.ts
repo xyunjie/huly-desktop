@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { parseServerConfig } from "./config";
-import { buildCommands, filterCommands } from "./commands";
 import { filterIssues, groupIssues, hasActiveFilters, pickInitialIssue } from "./filters";
 import { loadOfflineSnapshot, saveOfflineSnapshot, clearOfflineSnapshot } from "./cache";
 import { validateLogin } from "./login";
@@ -208,13 +207,6 @@ describe("offline cache", () => {
     expect(loaded?.people).toHaveLength(mockPeople.length);
     clearOfflineSnapshot("https://lm.all666.cn:666", "company");
     expect(loadOfflineSnapshot("https://lm.all666.cn:666", "company")).toBeNull();
-  });
-});
-
-describe("command palette", () => {
-  it("finds an issue by identifier", () => {
-    const commands = filterCommands(buildCommands(mockIssues, "list"), "core-131");
-    expect(commands.some((command) => command.title.includes("CORE-131"))).toBe(true);
   });
 });
 

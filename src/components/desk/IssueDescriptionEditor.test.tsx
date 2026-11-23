@@ -30,6 +30,8 @@ describe("IssueDescriptionEditor", () => {
     fireEvent.click(screen.getByRole("button", { name: "插入表情" }));
     fireEvent.click(await screen.findByRole("button", { name: "插入 👍" }));
     fireEvent.keyDown(editor, { key: "s", metaKey: true });
+    expect(onSave).not.toHaveBeenCalled();
+    fireEvent.blur(editor);
     await waitFor(() => expect(onSave).toHaveBeenCalledOnce());
     const [saved] = onSave.mock.lastCall!;
     expect(JSON.parse(saved).content).toContainEqual(special);
@@ -49,6 +51,8 @@ describe("IssueDescriptionEditor", () => {
     fireEvent.click(screen.getByRole("button", { name: "插入模板" }));
     fireEvent.click(await screen.findByRole("button", { name: "复核模板" }));
     expect(within(composer).getByText("检查通过").tagName).toBe("STRONG");
+    fireEvent.keyDown(composer, { key: "Enter", ctrlKey: true });
+    fireEvent.keyDown(composer, { key: "Enter", metaKey: true });
     fireEvent.blur(composer);
     expect(onSubmit).not.toHaveBeenCalled();
     fireEvent.click(send);
@@ -103,7 +107,7 @@ describe("IssueDescriptionEditor", () => {
     fireEvent.click(await screen.findByRole("button", { name: "2 × 2" }));
     expect(within(description).getByRole("table")).toBeInTheDocument();
 
-    fireEvent.keyDown(description, { key: "s", metaKey: true });
+    fireEvent.blur(description);
     expect(await screen.findByRole("alert")).toHaveTextContent("暂时无法写入");
     expect(within(description).getByRole("table")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "重试保存" }));

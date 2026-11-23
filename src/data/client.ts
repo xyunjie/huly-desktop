@@ -29,6 +29,8 @@ import type {
 } from "@/domain/types";
 import type { WorkspaceRole } from "@/domain/roles";
 
+export const PROJECT_ISSUE_LIMIT = 500;
+
 export interface DeskClient {
   readonly mode: DataMode;
   readonly commentWrite: boolean;
@@ -51,6 +53,7 @@ export interface DeskClient {
   updateProject(projectId: string, patch: ProjectPatch): Promise<Project>;
   changeDisplayName(firstName: string, lastName: string): Promise<string>;
   loadProject(projectId: string, targetIssueId?: string): Promise<ProjectBundle>;
+  findIssueByIdentifier(identifier: string): Promise<Issue | null>;
   listAssigned(personId: string): Promise<Issue[]>;
   updateIssue(id: string, patch: IssuePatch): Promise<Issue>;
   createIssue(input: CreateIssueInput): Promise<Issue>;

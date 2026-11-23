@@ -66,15 +66,10 @@ pub fn keychain_clear_ca() -> Result<(), String> {
     clear("custom-ca")
 }
 
-#[tauri::command]
-pub fn keychain_save_mcp_token(token: String) -> Result<(), String> {
-    if token.trim().is_empty() {
-        return Err("MCP 令牌不能为空。".to_string());
-    }
-    save("mcp-token", &token)
+pub fn keychain_save_mcp_token(token: &str) -> Result<(), String> {
+    save("mcp-token", token)
 }
 
-#[tauri::command]
 pub fn keychain_load_mcp_token() -> Result<Option<String>, String> {
     load("mcp-token")
 }

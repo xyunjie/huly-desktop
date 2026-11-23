@@ -1,26 +1,62 @@
-use axum::body::Body;
-use axum::extract::State;
-use axum::http::{HeaderValue, StatusCode};
-use axum::response::Response;
-use axum::routing::{any, post};
-use axum::Router;
+pub mod clients;
+
+use axum::body::to_bytes;
+use axum::extract::{Request, State};
+use axum::http::{header, HeaderMap, HeaderValue, Method, StatusCode};
+use axum::response::{IntoResponse, Response};
+use axum::{routing::any, Json, Router};
 use rand::RngCore;
-use serde_json::Value;
+use serde::Serialize;
+use serde_json::{json, Value};
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicU16, AtomicU64, Ordering};
+use std::net::TcpListener;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
-use tauri::{AppHandle, Emitter, Manager};
-use tauri::WebviewWindow;
+use std::time::Duration;
+use tauri::{AppHandle, Emitter, Manager, WebviewWindow};
 use tokio::sync::oneshot;
 
-/// Shared MCP server state: bearer token and pending webview requests.
+const PROTOCOLS: &[&str] = &["2025-06-18", "2025-03-26"];
+const MAX_BODY: usize = 1024 * 1024;
+
 struct McpState {
-    token: String,
-    /// Actual bound port; 0 until the server picks one.
-    port: AtomicU16,
+    token: Mutex<Result<String, String>>,
+    port: Result<u16, String>,
     pending: Mutex<HashMap<u64, oneshot::Sender<Value>>>,
     seq: AtomicU64,
     window: Mutex<Option<WebviewWindow>>,
+}
+
+impl McpState {
+    fn new(port: Result<u16, String>, token: Result<String, String>) -> Self {
+        Self {
+            token: Mutex::new(token),
+            port,
+            pending: Mutex::new(HashMap::new()),
+            seq: AtomicU64::new(1),
+            window: Mutex::new(None),
+        }
+    }
+
+    fn rotate_token(&self, save: impl FnOnce(&str) -> Result<(), String>) -> Result<(), String> {
+        let mut current = self.token.lock().unwrap();
+        let token = random_token();
+        save(&token)?;
+        *current = Ok(token);
+        Ok(())
+    }
+}
+
+#[derive(Serialize)]
+pub struct McpConfig {
+    port: u16,
+    token: String,
+}
+
+impl McpConfig {
+    fn url(&self) -> String {
+        format!("http://127.0.0.1:{}/mcp", self.port)
+    }
 }
 
 fn random_token() -> String {
@@ -29,424 +65,270 @@ fn random_token() -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
-#[tauri::command]
-pub fn mcp_get_config(app: AppHandle) -> Result<Value, String> {
-    let token = match super::keychain::keychain_load_mcp_token() {
-        Ok(Some(existing)) => existing,
-        Ok(None) => {
-            let token = random_token();
-            super::keychain::keychain_save_mcp_token(token.clone())?;
-            token
+fn load_token() -> Result<String, String> {
+    if let Some(token) = super::keychain::keychain_load_mcp_token()? {
+        if token.len() == 64 && token.bytes().all(|b| b.is_ascii_hexdigit()) {
+            return Ok(token);
         }
-        Err(reason) => return Err(reason),
-    };
-    let port = app
-        .state::<Arc<McpState>>()
-        .port
-        .load(Ordering::Relaxed);
-    Ok(serde_json::json!({ "port": port, "token": token }))
-}
-
-#[tauri::command]
-pub fn mcp_regenerate_token() -> Result<Value, String> {
+    }
     let token = random_token();
-    super::keychain::keychain_save_mcp_token(token.clone())?;
-    Ok(serde_json::json!({ "token": token }))
+    super::keychain::keychain_save_mcp_token(&token)?;
+    Ok(token)
 }
 
-/// The webview answers a forwarded MCP request with this command.
 #[tauri::command]
-pub fn mcp_respond(app: AppHandle, seq: u64, body: Value) -> Result<(), String> {
+pub fn mcp_get_config(app: AppHandle) -> Result<McpConfig, String> {
+    let state = app.state::<Arc<McpState>>();
+    let port = state.port.clone()?;
+    let token = state.token.lock().unwrap().clone()?;
+    Ok(McpConfig { port, token })
+}
+
+#[tauri::command]
+pub fn mcp_regenerate_token(app: AppHandle) -> Result<McpConfig, String> {
+    let state = app.state::<Arc<McpState>>();
+    state.port.clone()?;
+    state.rotate_token(super::keychain::keychain_save_mcp_token)?;
+    mcp_get_config(app)
+}
+
+#[tauri::command]
+pub fn mcp_respond(app: AppHandle, seq: u64, body: Value) {
     let state = app.state::<Arc<McpState>>();
     if let Some(sender) = state.pending.lock().unwrap().remove(&seq) {
         let _ = sender.send(body);
-    }
-    Ok(())
+    };
 }
 
-/// Bind the webview window so Rust can emit requests to it.
 #[tauri::command]
 pub fn mcp_bind_window(app: AppHandle) -> Result<(), String> {
-    let state = app.state::<Arc<McpState>>();
-    if let Some(window) = app.get_webview_window("main") {
-        *state.window.lock().unwrap() = Some(window);
-    }
+    let window = app.get_webview_window("main").ok_or("主窗口尚未就绪。")?;
+    *app.state::<Arc<McpState>>().window.lock().unwrap() = Some(window);
     Ok(())
 }
 
-async fn handle_mcp(
-    State(state): State<Arc<McpState>>,
-    headers: axum::http::HeaderMap,
-    body: String,
-) -> Response {
-    // Bearer token check; loopback only is enforced by the bind address.
-    let auth = headers
-        .get("authorization")
-        .and_then(|value| value.to_str().ok())
-        .unwrap_or("");
-    if auth != format!("Bearer {}", state.token) {
-        return json_response(
-            StatusCode::UNAUTHORIZED,
-            serde_json::json!({ "jsonrpc": "2.0", "id": null, "error": { "code": -32001, "message": "无效的 MCP 令牌。" } }),
-        );
+fn rpc_error(status: StatusCode, id: Value, code: i32, message: &str) -> Response {
+    (
+        status,
+        Json(json!({ "jsonrpc": "2.0", "id": id, "error": { "code": code, "message": message } })),
+    )
+        .into_response()
+}
+
+fn allowed_origin(headers: &HeaderMap, port: u16) -> bool {
+    let mut origins = headers.get_all(header::ORIGIN).iter();
+    let Some(origin) = origins.next() else {
+        return true;
+    };
+    origins.next().is_none()
+        && origin.to_str().is_ok_and(|origin| {
+            origin == format!("http://127.0.0.1:{port}")
+                || origin == format!("http://localhost:{port}")
+        })
+}
+
+// Remove the pending entry even if the HTTP connection closes before we respond.
+struct Pending<'a>(&'a McpState, u64);
+
+impl Drop for Pending<'_> {
+    fn drop(&mut self) {
+        self.0.pending.lock().unwrap().remove(&self.1);
+    }
+}
+
+async fn handle_mcp(State(state): State<Arc<McpState>>, request: Request) -> Response {
+    let (parts, body) = request.into_parts();
+    let headers = parts.headers;
+    if !allowed_origin(&headers, state.port.as_ref().copied().unwrap_or_default()) {
+        return StatusCode::FORBIDDEN.into_response();
+    }
+    if parts.method != Method::POST {
+        return (
+            StatusCode::METHOD_NOT_ALLOWED,
+            [(header::ALLOW, HeaderValue::from_static("POST"))],
+        )
+            .into_response();
     }
 
-    let parsed: Result<Value, _> = serde_json::from_str(&body);
-    let request = match parsed {
-        Ok(value) => value,
-        Err(_) => {
-            return json_response(
-                StatusCode::BAD_REQUEST,
-                serde_json::json!({ "jsonrpc": "2.0", "id": null, "error": { "code": -32700, "message": "请求体不是有效的 JSON。" } }),
-            );
-        }
+    let authorized = state.token.lock().unwrap().as_ref().is_ok_and(|token| {
+        headers
+            .get(header::AUTHORIZATION)
+            .and_then(|value| value.to_str().ok())
+            .and_then(|value| value.split_once(' '))
+            .is_some_and(|(scheme, value)| scheme.eq_ignore_ascii_case("Bearer") && value == token)
+    });
+    if !authorized {
+        let mut response = rpc_error(
+            StatusCode::UNAUTHORIZED,
+            Value::Null,
+            -32001,
+            "无效的 MCP 令牌。",
+        );
+        response
+            .headers_mut()
+            .insert(header::WWW_AUTHENTICATE, HeaderValue::from_static("Bearer"));
+        return response;
+    }
+    let versions = headers.get_all("mcp-protocol-version");
+    if versions.iter().count() > 1
+        || versions.iter().any(|version| {
+            version
+                .to_str()
+                .map_or(true, |value| !PROTOCOLS.contains(&value))
+        })
+    {
+        return rpc_error(
+            StatusCode::BAD_REQUEST,
+            Value::Null,
+            -32600,
+            "不支持此 MCP 协议版本。",
+        );
+    }
+    if !headers
+        .get(header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| {
+            value
+                .split(';')
+                .next()
+                .is_some_and(|mime| mime.trim().eq_ignore_ascii_case("application/json"))
+        })
+    {
+        return StatusCode::UNSUPPORTED_MEDIA_TYPE.into_response();
+    }
+
+    let body = match to_bytes(body, MAX_BODY).await {
+        Ok(body) => body,
+        Err(_) => return StatusCode::PAYLOAD_TOO_LARGE.into_response(),
     };
+    let Ok(body) = serde_json::from_slice::<Value>(&body) else {
+        return rpc_error(
+            StatusCode::BAD_REQUEST,
+            Value::Null,
+            -32700,
+            "请求体不是有效的 JSON。",
+        );
+    };
+    let id = body.get("id");
+    let method = body
+        .get("method")
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty());
+    let valid_id = id.is_some_and(|id| id.is_string() || id.is_i64() || id.is_u64());
+    let valid_request = method.is_some()
+        && (id.is_none() || valid_id)
+        && body.get("params").is_none_or(Value::is_object)
+        && body.get("result").is_none()
+        && body.get("error").is_none();
+    let valid_reply = body.get("method").is_none()
+        && valid_id
+        && match (body.get("result"), body.get("error")) {
+            (Some(result), None) => result.is_object(),
+            (None, Some(error)) => {
+                error.get("code").is_some_and(Value::is_i64)
+                    && error.get("message").is_some_and(Value::is_string)
+            }
+            _ => false,
+        };
+    if body.get("jsonrpc").and_then(Value::as_str) != Some("2.0") || !(valid_request || valid_reply)
+    {
+        return rpc_error(
+            StatusCode::BAD_REQUEST,
+            Value::Null,
+            -32600,
+            "无效的 JSON-RPC 消息。",
+        );
+    }
+    if valid_reply || id.is_none() {
+        return StatusCode::ACCEPTED.into_response();
+    }
+    let id = id.unwrap().clone();
+    match method.unwrap() {
+        "initialize" => {
+            let version = body
+                .pointer("/params/protocolVersion")
+                .and_then(Value::as_str)
+                .filter(|version| PROTOCOLS.contains(version))
+                .unwrap_or(PROTOCOLS[0]);
+            return Json(json!({ "jsonrpc": "2.0", "id": id, "result": {
+                "protocolVersion": version,
+                "capabilities": { "tools": {} },
+                "serverInfo": { "name": "huly-desk", "version": env!("CARGO_PKG_VERSION") }
+            } }))
+            .into_response();
+        }
+        "ping" => return Json(json!({ "jsonrpc": "2.0", "id": id, "result": {} })).into_response(),
+        "tools/list" | "tools/call" => {}
+        _ => return rpc_error(StatusCode::OK, id, -32601, "未知 MCP 方法。"),
+    }
 
     let window = state.window.lock().unwrap().clone();
     let Some(window) = window else {
-        return json_response(
+        return rpc_error(
             StatusCode::SERVICE_UNAVAILABLE,
-            serde_json::json!({ "jsonrpc": "2.0", "id": null, "error": { "code": -32002, "message": "界面尚未就绪。" } }),
+            id,
+            -32002,
+            "桌面界面尚未就绪。",
         );
     };
-
     let seq = state.seq.fetch_add(1, Ordering::Relaxed);
-    let (tx, rx) = oneshot::channel::<Value>();
+    let (tx, rx) = oneshot::channel();
     state.pending.lock().unwrap().insert(seq, tx);
-
-    if let Err(reason) = window.emit("mcp-request", serde_json::json!({ "seq": seq, "body": request })) {
-        state.pending.lock().unwrap().remove(&seq);
-        return json_response(
+    let _pending = Pending(&state, seq);
+    if window
+        .emit("mcp-request", json!({ "seq": seq, "body": body }))
+        .is_err()
+    {
+        return rpc_error(
             StatusCode::SERVICE_UNAVAILABLE,
-            serde_json::json!({ "jsonrpc": "2.0", "id": null, "error": { "code": -32002, "message": format!("无法转发请求：{reason}") } }),
+            id,
+            -32002,
+            "无法将请求转发给桌面界面。",
         );
     }
-
-    match tokio::time::timeout(std::time::Duration::from_secs(60), rx).await {
-        Ok(Ok(body)) => json_response(StatusCode::OK, body),
-        _ => {
-            state.pending.lock().unwrap().remove(&seq);
-            json_response(
-                StatusCode::GATEWAY_TIMEOUT,
-                serde_json::json!({ "jsonrpc": "2.0", "id": null, "error": { "code": -32003, "message": "请求超时。" } }),
-            )
+    match tokio::time::timeout(Duration::from_secs(60), rx).await {
+        Ok(Ok(Value::Object(mut response))) => {
+            response.insert("id".into(), id);
+            Json(response).into_response()
         }
+        _ => rpc_error(
+            StatusCode::GATEWAY_TIMEOUT,
+            id,
+            -32003,
+            "请求超时。如果是写入操作，请先核实结果再重试。",
+        ),
     }
 }
 
-fn json_response(status: StatusCode, body: Value) -> Response {
-    Response::builder()
-        .status(status)
-        .header("content-type", HeaderValue::from_static("application/json"))
-        .body(Body::from(body.to_string()))
-        .unwrap()
+fn router(state: Arc<McpState>) -> Router {
+    Router::new()
+        .route("/mcp", any(handle_mcp))
+        .with_state(state)
 }
 
 pub fn spawn(app: AppHandle) {
-    const BASE_PORT: u16 = 41790;
-    const MAX_ATTEMPTS: u16 = 20;
-    let token = match super::keychain::keychain_load_mcp_token() {
-        Ok(Some(existing)) if existing.len() == 64 => existing,
-        _ => {
-            let token = random_token();
-            let _ = super::keychain::keychain_save_mcp_token(token.clone());
-            token
-        }
-    };
-    let state = Arc::new(McpState {
-        token,
-        port: AtomicU16::new(0),
-        pending: Mutex::new(HashMap::new()),
-        seq: AtomicU64::new(1),
-        window: Mutex::new(None),
-    });
+    let listener = (41790..41810)
+        .find_map(|port| TcpListener::bind(("127.0.0.1", port)).ok())
+        .ok_or_else(|| "MCP 无法监听 127.0.0.1:41790–41809；请释放其中一个端口后重启。".to_string())
+        .and_then(|listener| {
+            listener.set_nonblocking(true).map_err(|e| e.to_string())?;
+            let port = listener.local_addr().map_err(|e| e.to_string())?.port();
+            Ok((listener, port))
+        });
+    let port = listener
+        .as_ref()
+        .map(|(_, port)| *port)
+        .map_err(Clone::clone);
+    let state = Arc::new(McpState::new(port, load_token()));
     app.manage(state.clone());
-
-    tauri::async_runtime::spawn(async move {
-        let router = Router::new()
-            .route("/mcp", post(handle_mcp))
-            .route("/mcp", any(|| async { json_response(StatusCode::METHOD_NOT_ALLOWED, serde_json::json!({ "error": "Method Not Allowed" })) }))
-            .with_state(state.clone());
-        // First free port from 41790; another Huly Desk instance or a
-        // foreign app may hold the base port.
-        for offset in 0..MAX_ATTEMPTS {
-            let port = BASE_PORT + offset;
-            match tokio::net::TcpListener::bind(("127.0.0.1", port)).await {
-                Ok(listener) => {
-                    state.port.store(port, Ordering::Relaxed);
-                    let _ = axum::serve(listener, router).await;
-                    return;
-                }
-                Err(_) => continue,
+    if let Ok((listener, _)) = listener {
+        tauri::async_runtime::spawn(async move {
+            if let Ok(listener) = tokio::net::TcpListener::from_std(listener) {
+                let _ = axum::serve(listener, router(state)).await;
             }
-        }
-    });
-}
-
-// ---- One-click client setup -------------------------------------------------
-
-fn home() -> Result<std::path::PathBuf, String> {
-    std::env::var_os("HOME").map(std::path::PathBuf::from).ok_or_else(|| "无法确定用户目录。".to_string())
-}
-
-#[derive(serde::Serialize)]
-pub struct ClientStatus {
-    pub installed: bool,
-    /// Config/tool presence result, shown in the UI when not installed.
-    pub note: String,
-}
-
-fn claude_code_status() -> Result<ClientStatus, String> {
-    let out = std::process::Command::new("claude")
-        .arg("mcp")
-        .arg("list")
-        .output()
-        .map_err(|_| "未检测到 claude 命令。".to_string())?;
-    let text = String::from_utf8_lossy(&out.stdout) + String::from_utf8_lossy(&out.stderr);
-    Ok(ClientStatus { installed: text.contains("huly-desk"), note: if text.contains("huly-desk") { "已在 claude mcp 列表中".into() } else { "未在 claude mcp 列表中".into() } })
-}
-
-fn cursor_config_path() -> Result<std::path::PathBuf, String> {
-    Ok(home()?.join(".cursor/mcp.json"))
-}
-
-fn cursor_status() -> Result<ClientStatus, String> {
-    let path = cursor_config_path()?;
-    if !path.exists() {
-        return Ok(ClientStatus { installed: false, note: "配置文件不存在".into() });
-    }
-    let raw = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
-    Ok(ClientStatus { installed: raw.contains("huly-desk"), note: if raw.contains("huly-desk") { "已写入 ~/.cursor/mcp.json".into() } else { "未写入 ~/.cursor/mcp.json".into() } })
-}
-
-fn json_config_path(client: &str) -> Result<std::path::PathBuf, String> {
-    let h = home()?;
-    Ok(match client {
-        "opencode" => h.join(".config/opencode/opencode.json"),
-        "windsurf" => h.join(".codeium/windsurf/mcp_config.json"),
-        "claude-desktop" => h.join("Library/Application Support/Claude/claude_desktop_config.json"),
-        _ => return Err(format!("未知客户端 {client}")),
-    })
-}
-
-fn toml_config_path() -> Result<std::path::PathBuf, String> {
-    Ok(home()?.join(".codex/config.toml"))
-}
-
-fn file_status(path: &std::path::Path, label: &str) -> Result<ClientStatus, String> {
-    if !path.exists() {
-        return Ok(ClientStatus { installed: false, note: format!("{label} 不存在，添加时会创建") });
-    }
-    let raw = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
-    Ok(ClientStatus { installed: raw.contains("huly-desk"), note: if raw.contains("huly-desk") { format!("已写入 {label}") } else { format!("未写入 {label}") } })
-}
-
-#[tauri::command]
-pub fn mcp_client_status(client: String) -> Result<ClientStatus, String> {
-    match client.as_str() {
-        "claude-code" => claude_code_status(),
-        "cursor" => cursor_status(),
-        "codex" => file_status(&toml_config_path()?, "~/.codex/config.toml"),
-        "opencode" => file_status(&json_config_path("opencode")?, "opencode.json"),
-        "windsurf" => file_status(&json_config_path("windsurf")?, "mcp_config.json"),
-        "claude-desktop" => file_status(&json_config_path("claude-desktop")?, "claude_desktop_config.json"),
-        _ => Err(format!("未知客户端 {client}")),
-    }
-}
-
-/// Merge `mcpServers.huly-desk` into a JSON MCP config file, with backup.
-fn write_json_client(path: &std::path::Path, server: serde_json::Value) -> Result<String, String> {
-    let mut root: serde_json::Value = if path.exists() {
-        let raw = std::fs::read_to_string(path).map_err(|e| format!("读取失败：{e}"))?;
-        parse_json_config(&raw)?
-    } else {
-        serde_json::json!({})
-    };
-    if !root.is_object() {
-        return Err("现有配置不是 JSON 对象，已取消写入。".to_string());
-    }
-    if path.exists() {
-        let backup = path.with_extension("json.hulydesk-backup");
-        std::fs::copy(path, &backup).map_err(|e| format!("备份失败：{e}"))?;
-    }
-    merge_server(&mut root, server)?;
-    let text = serde_json::to_string_pretty(&root).map_err(|e| e.to_string())?;
-    std::fs::write(path, text).map_err(|e| format!("写入失败：{e}"))?;
-    Ok(format!("已写入 {}（原文件已备份）", path.display()))
-}
-
-fn parse_json_config(raw: &str) -> Result<serde_json::Value, String> {
-    serde_json::from_str(raw).map_err(|_| "现有配置不是有效的 JSON，已取消写入。".to_string())
-}
-
-fn merge_server(root: &mut serde_json::Value, server: serde_json::Value) -> Result<(), String> {
-    root.as_object_mut()
-        .ok_or("现有配置不是 JSON 对象，已取消写入。".to_string())?
-        .entry("mcpServers")
-        .or_insert_with(|| serde_json::json!({}))
-        .as_object_mut()
-        .ok_or("mcpServers 不是对象，已取消写入。".to_string())?
-        .insert("huly-desk".into(), server);
-    Ok(())
-}
-
-fn write_codex_config(url: &str, token: &str) -> Result<String, String> {
-    let path = toml_config_path()?;
-    let block = codex_block(url, token);
-    let existing = if path.exists() { std::fs::read_to_string(&path).map_err(|e| e.to_string())? } else { String::new() };
-    if existing.contains("[mcp_servers.huly_desk]") {
-        let out = replace_codex_table(&existing, &block);
-        let backup = path.with_extension("toml.hulydesk-backup");
-        std::fs::copy(&path, &backup).map_err(|e| format!("备份失败：{e}"))?;
-        std::fs::write(&path, out).map_err(|e| format!("写入失败：{e}"))?;
-        return Ok(format!("已更新 {}（原文件已备份）", path.display()));
-    }
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| format!("创建目录失败：{e}"))?;
-    }
-    std::fs::write(&path, existing + &block).map_err(|e| format!("写入失败：{e}"))?;
-    Ok(format!("已写入 {}（新增配置段）", path.display()))
-}
-
-#[tauri::command]
-pub fn mcp_add_to_client(app: AppHandle, client: String, url: String, token: String) -> Result<String, String> {
-    if !url.starts_with("http://127.0.0.1:") {
-        return Err("服务地址异常，已取消。".to_string());
-    }
-    match client.as_str() {
-        "claude-code" => {
-            let header = format!("Authorization: Bearer {token}");
-            let out = std::process::Command::new("claude")
-                .args(["mcp", "add", "--transport", "http", "huly-desk", &url, "--header", &header])
-                .output()
-                .map_err(|_| "未检测到 claude 命令，请先安装 Claude Code。".to_string())?;
-            if out.status.success() {
-                Ok("已通过 claude mcp add 添加（用户级）。".to_string())
-            } else {
-                Err(format!("claude 命令失败：{}", String::from_utf8_lossy(&out.stderr)))
-            }
-        }
-        "cursor" => {
-            // cursor://anysphere.cursor-deeplink/mcp/install?name=...&config=base64(json)
-            let config = serde_json::json!({ "url": url, "headers": { "Authorization": format!("Bearer {token}") } });
-            let json = serde_json::to_string(&config).map_err(|e| e.to_string())?;
-            let b64 = base64_encode(json.as_bytes());
-            let link = format!("cursor://anysphere.cursor-deeplink/mcp/install?name=huly-desk&config={b64}");
-            open_url(&app, &link)
-        }
-        "codex" => write_codex_config(&url, &token),
-        "opencode" | "windsurf" | "claude-desktop" => {
-            let server = serde_json::json!({ "url": url, "headers": { "Authorization": format!("Bearer {token}") } });
-            let path = json_config_path(&client)?;
-            write_json_client(&path, server)
-        }
-        _ => Err(format!("未知客户端 {client}")),
-    }
-}
-
-fn codex_block(url: &str, token: &str) -> String {
-    format!(
-        "\n[mcp_servers.huly_desk]\nurl = \"{url}\"\nhttp_headers = {{ \"Authorization\" = \"Bearer {token}\" }}\n"
-    )
-}
-
-/// Replace the huly_desk table (up to the next table header or EOF), keeping others.
-fn replace_codex_table(existing: &str, block: &str) -> String {
-    let mut out = String::new();
-    let mut skipping = false;
-    for line in existing.lines() {
-        if line.trim_start().starts_with("[mcp_servers.huly_desk]") {
-            skipping = true;
-            continue;
-        }
-        if skipping && line.trim_start().starts_with('[') && line.trim_start().ends_with(']') {
-            skipping = false;
-        }
-        if !skipping {
-            out.push_str(line);
-            out.push('\n');
-        }
-    }
-    out + block
-}
-
-fn base64_encode(data: &[u8]) -> String {
-    const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut out = String::new();
-    for chunk in data.chunks(3) {
-        let b = [chunk[0], *chunk.get(1).unwrap_or(&0), *chunk.get(2).unwrap_or(&0)];
-        let n = (u32::from(b[0]) << 16) | (u32::from(b[1]) << 8) | u32::from(b[2]);
-        out.push(TABLE[(n >> 18) as usize & 63] as char);
-        out.push(TABLE[(n >> 12) as usize & 63] as char);
-        out.push(if chunk.len() > 1 { TABLE[(n >> 6) as usize & 63] as char } else { '=' });
-        out.push(if chunk.len() > 2 { TABLE[n as usize & 63] as char } else { '=' });
-    }
-    out
-}
-
-fn open_url(_app: &AppHandle, url: &str) -> Result<String, String> {
-    #[cfg(target_os = "macos")]
-    let result = std::process::Command::new("open").arg(url).output();
-    #[cfg(target_os = "windows")]
-    let result = std::process::Command::new("cmd").args(["/C", "start", url]).output();
-    #[cfg(target_os = "linux")]
-    let result = std::process::Command::new("xdg-open").arg(url).output();
-    match result {
-        Ok(output) if output.status.success() => Ok("已打开 Cursor，请在 Cursor 中确认安装。".to_string()),
-        Ok(output) => Err(format!("打开失败：{}", String::from_utf8_lossy(&output.stderr))),
-        Err(e) => Err(format!("打开失败：{e}")),
+        });
     }
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn server() -> serde_json::Value {
-        serde_json::json!({ "url": "http://127.0.0.1:41790/mcp", "headers": { "Authorization": "Bearer t" } })
-    }
-
-    #[test]
-    fn merges_into_existing_json_keeping_other_servers() {
-        let mut root = parse_json_config(r#"{"mcpServers":{"other":{"url":"x"}},"theme":"dark"}"#).unwrap();
-        merge_server(&mut root, server()).unwrap();
-        assert_eq!(root["mcpServers"]["other"]["url"], "x");
-        assert_eq!(root["mcpServers"]["huly-desk"]["url"], "http://127.0.0.1:41790/mcp");
-        assert_eq!(root["theme"], "dark");
-    }
-
-    #[test]
-    fn creates_mcpservers_in_empty_object() {
-        let mut root = parse_json_config("{}").unwrap();
-        merge_server(&mut root, server()).unwrap();
-        assert_eq!(root["mcpServers"]["huly-desk"]["url"], "http://127.0.0.1:41790/mcp");
-    }
-
-    #[test]
-    fn rejects_invalid_json_instead_of_overwriting() {
-        assert!(parse_json_config("{ broken").is_err());
-    }
-
-    #[test]
-    fn codex_table_replacement_keeps_other_tables() {
-        let existing = "model = \"gpt-5\"\n\n[mcp_servers.huly_desk]\nurl = \"old\"\n\n[profiles.x]\ny = 1\n";
-        let out = replace_codex_table(existing, &codex_block("http://127.0.0.1:41790/mcp", "t"));
-        assert!(out.contains("model = \"gpt-5\""));
-        assert!(out.contains("url = \"http://127.0.0.1:41790/mcp\""));
-        assert!(!out.contains("\"old\""));
-        assert!(out.contains("[profiles.x]"));
-        assert!(out.contains("y = 1"));
-    }
-
-    #[test]
-    fn codex_append_when_missing() {
-        let existing = "model = \"gpt-5\"\n";
-        let out = existing.to_string() + &codex_block("http://127.0.0.1:41790/mcp", "t");
-        assert!(out.starts_with("model = \"gpt-5\"\n\n[mcp_servers.huly_desk]"));
-    }
-
-    #[test]
-    fn base64_matches_standard() {
-        assert_eq!(base64_encode(b"{\"url\":\"http://127.0.0.1:41790/mcp\"}"), "eyJ1cmwiOiJodHRwOi8vMTI3LjAuMC4xOjQxNzkwL21jcCJ9");
-    }
-}
+mod tests;
