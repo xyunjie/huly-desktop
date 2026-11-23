@@ -745,6 +745,8 @@ export class HulyDeskClient implements DeskClient {
       : undefined;
     return loadActivityFeed(client, issue, { ...activity.class, ...chunter.class }, {
       commentsOnly: options?.commentsOnly,
+      readCommentAttachments: options?.commentsOnly ? undefined : (commentIds) =>
+        this.findAttachments(client, commentIds),
       descending: this.plugins().sorting.Descending,
       statuses: this.#statusCache,
       people: this.#peopleCache,
@@ -781,9 +783,9 @@ export class HulyDeskClient implements DeskClient {
     }
   }
 
-  async addComment(issueId: string, body: string, format: CommentFormat = "markdown"): Promise<Comment> {
+  async addComment(issueId: string, body: string, format: CommentFormat = "markdown", files: File[] = []): Promise<Comment> {
     const text = body.trim();
-    if (!text) throw new Error("评论不能为空。");
+    if (!text && !files.length) throw new Error("评论不能为空。");
     const plugins = this.plugins();
     const client = this.api();
     const issue = await client.findOne<RawIssue>(plugins.tracker.class.Issue, { _id: issueId });
@@ -792,15 +794,46 @@ export class HulyDeskClient implements DeskClient {
     const commentId = plugins.generateId();
     const markup = format === "markup" ? text : encodeMarkdownToMarkup(text);
     if (!isInlineMarkupJson(markup)) throw new Error("评论内容格式有误。");
-    await client.addCollection(
-      chunter.class.ChatMessage,
+    const commentClass = chunter.class.ChatMessage;
+    const uploads = [];
+    for (const file of files) {
+      if (this.#client !== client) throw new Error("工作区已切换，评论未发送。");
+      uploads.push(await this.uploadBlob(file));
+    }
+    if (uploads.length && this.#client !== client) throw new Error("工作区已切换，评论未发送。");
+    const attachments: Attachment[] = [];
+    const attachmentClass = uploads.length ? await this.attachmentClass() : "";
+    const send = () => client.addCollection(
+      commentClass,
       issue.space,
       issueId,
       plugins.tracker.class.Issue,
       "comments",
-      { message: markup, attachments: 0 },
+      { message: markup, attachments: attachments.length },
       commentId,
     );
+    const discardDraftAttachments = () => Promise.allSettled(attachments.map(({ id }) =>
+      client.removeCollection(attachmentClass, issue.space, id, commentId, commentClass, "attachments"),
+    ));
+    try {
+      // Huly saves the comment's attachments before creating its message with the attachment count.
+      for (const upload of uploads) {
+        attachments.push(await this.attachFile(client, attachmentClass, issue.space, commentId, commentClass, upload));
+      }
+      if (attachments.length && this.#client !== client) throw new Error("工作区已切换，评论未发送。");
+    } catch (reason) {
+      await discardDraftAttachments();
+      throw reason;
+    }
+    try {
+      await send();
+    } catch (reason) {
+      if (!attachments.length) throw reason;
+      // A lost acknowledgment must not delete files from a comment that was actually sent.
+      const persisted = await client.findOne(commentClass, { _id: commentId }).catch(() => null);
+      if (persisted === undefined) await discardDraftAttachments();
+      if (!persisted) throw reason;
+    }
     return {
       id: commentId,
       issueId,
@@ -808,22 +841,27 @@ export class HulyDeskClient implements DeskClient {
       authorName: this.#userName || "我",
       body: format === "markup" ? decodeMarkupToMarkdown(markup) : text,
       nativeMarkup: markup,
+      attachments,
       createdOn: Date.now(),
     };
   }
 
   async listAttachments(issueId: string, options?: { commentIds?: string[]; fileId?: string }): Promise<Attachment[]> {
-    const client = this.api();
-    const attachmentPlugin = readPlugin<{ class: { Attachment: string } }>(await import("@hcengineering/attachment"));
-    const rows = await client.findAll<RawAttachment>(
-      attachmentPlugin.class.Attachment,
-      {
-        attachedTo: options?.commentIds?.length ? { $in: [issueId, ...options.commentIds] } : issueId,
-        ...(options?.fileId ? { file: options.fileId } : {}),
-      },
-      { limit: ISSUE_ATTACHMENT_LIMIT, sort: { lastModified: this.plugins().sorting.Descending } },
-    );
-    return rows.map((row) => mapAttachment(row, issueId));
+    return this.findAttachments(this.api(), [issueId, ...(options?.commentIds ?? [])], options?.fileId, ISSUE_ATTACHMENT_LIMIT);
+  }
+
+  private async attachmentClass() {
+    return readPlugin<{ class: { Attachment: string } }>(await import("@hcengineering/attachment")).class.Attachment;
+  }
+
+  private async findAttachments(client: PlatformClient, parentIds: string[], fileId?: string, limit?: number) {
+    const rows = await client.findAll<RawAttachment>(await this.attachmentClass(), {
+      attachedTo: parentIds.length === 1 ? parentIds[0] : { $in: parentIds },
+      ...(fileId ? { file: fileId } : {}),
+    }, {
+      ...(limit === undefined ? {} : { limit }), sort: { lastModified: this.plugins().sorting.Descending },
+    });
+    return rows.map((row) => mapAttachment(row, parentIds[0]));
   }
 
   workspaceFileId(src: string): string | null {
@@ -844,15 +882,32 @@ export class HulyDeskClient implements DeskClient {
   }
 
   async uploadAttachment(issueId: string, file: File): Promise<Attachment> {
-    const plugins = this.plugins();
     const client = this.api();
-    const issue = await client.findOne<RawIssue>(plugins.tracker.class.Issue, { _id: issueId });
+    const issueClass = this.plugins().tracker.class.Issue;
+    const issue = await client.findOne<RawIssue>(issueClass, { _id: issueId });
     if (!issue) throw new Error("找不到这个任务。");
+    const attachmentClass = await this.attachmentClass();
+    if (this.#client !== client) throw new Error("工作区已切换，附件未上传。");
+    return this.attachFile(client, attachmentClass, issue.space, issueId, issueClass, await this.uploadBlob(file));
+  }
+
+  async uploadInlineFile(issueId: string, file: File): Promise<Attachment> {
+    const client = this.api();
+    const issue = await client.findOne(this.plugins().tracker.class.Issue, { _id: issueId });
+    if (!issue) throw new Error("找不到这个任务。");
+    if (this.#client !== client) throw new Error("工作区已切换，文件未插入描述。");
+    const upload = await this.uploadBlob(file);
+    if (this.#client !== client) throw new Error("工作区已切换，文件未插入描述。");
+    return mapAttachment({ _id: upload.file, ...upload }, issueId);
+  }
+
+  private async uploadBlob(file: File) {
     const uploadUrl = this.resolveStorageUrl("upload");
     if (!uploadUrl) throw new Error("服务器未配置 UPLOAD_URL，无法上传附件。");
 
     const formData = new FormData();
-    formData.append("file", file, file.name);
+    // Huly's multipart filename becomes the storage key, not the display name.
+    formData.append("file", file, this.plugins().generateId());
     const token = this.#workspaceToken || this.#accountToken;
     const response = await fetch(uploadUrl, {
       method: "POST",
@@ -868,33 +923,21 @@ export class HulyDeskClient implements DeskClient {
       throw new Error(first?.error ? `附件上传失败：${first.error}` : "附件上传没有返回文件标识。");
     }
 
-    const attachmentPlugin = readPlugin<{ class: { Attachment: string } }>(await import("@hcengineering/attachment"));
-    const attachmentId = plugins.generateId();
-    await client.addCollection(
-      attachmentPlugin.class.Attachment,
-      issue.space,
-      issueId,
-      plugins.tracker.class.Issue,
-      "attachments",
-      {
-        name: file.name,
-        file: first.id,
-        size: first.metadata?.size ?? file.size,
-        type: first.metadata?.contentType || file.type || "application/octet-stream",
-        lastModified: first.metadata?.lastModified ?? file.lastModified ?? Date.now(),
-      },
-      attachmentId,
-    );
-
     return {
-      id: attachmentId,
-      issueId,
-      fileId: first.id,
+      file: first.id,
       name: file.name,
       size: first.metadata?.size ?? file.size,
       type: first.metadata?.contentType || file.type || "application/octet-stream",
       lastModified: first.metadata?.lastModified ?? file.lastModified ?? Date.now(),
     };
+  }
+
+  private async attachFile(client: PlatformClient, attachmentClass: string, space: string, parentId: string, parentClass: string,
+    upload: Awaited<ReturnType<HulyDeskClient["uploadBlob"]>>): Promise<Attachment> {
+    if (this.#client !== client) throw new Error("工作区已切换，附件未保存。");
+    const id = this.plugins().generateId();
+    await client.addCollection(attachmentClass, space, parentId, parentClass, "attachments", upload, id);
+    return mapAttachment({ _id: id, ...upload }, parentId);
   }
 
   async downloadAttachment(attachment: Attachment): Promise<void> {

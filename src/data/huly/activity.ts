@@ -1,5 +1,5 @@
 import type { PlatformClient } from "@hcengineering/api-client";
-import type { Issue, IssueTimeline, Person, Status } from "@/domain/types";
+import type { Attachment, Issue, IssueTimeline, Person, Status } from "@/domain/types";
 import { descriptionIsRef } from "./mapping";
 import { decodeMarkupToMarkdown, formatDocUpdateBody, isInlineMarkupJson, type RawDocUpdateMessage } from "./markup";
 import { hasActivityDescriptionVersion, resolveActivityDescription } from "./activityDescription";
@@ -33,6 +33,7 @@ export async function loadActivityFeed(
     readDescriptionSnapshot?: (ref: string) => Promise<string>;
     refUrl?: string;
     commentsOnly?: boolean;
+    readCommentAttachments?: (commentIds: string[]) => Promise<Attachment[]>;
   },
 ): Promise<IssueTimeline> {
   const readOptions = { sort: { createdOn: options.descending }, showArchived: true };
@@ -53,6 +54,20 @@ export async function loadActivityFeed(
     : [];
   const unique = new Map([...rows, ...externalReferences].map((row) => [row._id, row]));
   const timeline: IssueTimeline = { comments: [], activity: [], warning };
+  const isChat = (row: TimelineRow) => row._class === classes.ChatMessage || row._class === classes.ThreadMessage;
+  const attachmentIds = rows.filter((row) => isChat(row) && (row.attachments ?? 0) > 0).map((row) => row._id);
+  const attachmentsByComment = new Map<string, Attachment[]>();
+  if (attachmentIds.length && options.readCommentAttachments) {
+    const attachments = await options.readCommentAttachments(attachmentIds).catch(() => {
+      timeline.warning ??= "部分评论附件未能加载。";
+      return [] as Attachment[];
+    });
+    for (const file of attachments) {
+      const current = attachmentsByComment.get(file.issueId);
+      if (current) current.push(file);
+      else attachmentsByComment.set(file.issueId, [file]);
+    }
+  }
   for (const row of unique.values()) {
     const author = row.createdBy ?? row.modifiedBy;
     const base = {
@@ -62,8 +77,7 @@ export async function loadActivityFeed(
       authorName: options.resolveAuthor(author),
       createdOn: row.createdOn ?? row.modifiedOn ?? 0,
     };
-    const isChat = row._class === classes.ChatMessage || row._class === classes.ThreadMessage;
-    if (isChat) {
+    if (isChat(row)) {
       let body = "";
       let nativeMarkup = typeof row.message === "string" && isInlineMarkupJson(row.message) ? row.message : undefined;
       if (isInlineMarkupJson(row.message) || (typeof row.message === "string" && !descriptionIsRef(row.message))) {
@@ -78,9 +92,10 @@ export async function loadActivityFeed(
           timeline.warning ??= "部分评论正文未能加载。";
         }
       }
-      body = body.trim() || ((row.attachments ?? 0) > 0 ? `（含 ${row.attachments} 个附件）` : "（无文字内容）");
+      const attachments = attachmentsByComment.get(row._id);
+      body = body.trim() || (attachments?.length ? "" : (row.attachments ?? 0) > 0 ? `（含 ${row.attachments} 个附件）` : "（无文字内容）");
       const providerLabel = row.provider && /(?:^|[:_-])email$/i.test(row.provider) ? "email" : undefined;
-      timeline.comments.push({ ...base, body, providerLabel, nativeMarkup });
+      timeline.comments.push({ ...base, body, providerLabel, nativeMarkup, attachments });
       continue;
     }
     if (options.commentsOnly) continue;

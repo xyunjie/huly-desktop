@@ -1,4 +1,4 @@
-import { FileAddOutlined, PaperClipOutlined, SendOutlined, SmileOutlined, TableOutlined, VideoCameraOutlined } from "@ant-design/icons";
+import { CloseOutlined, FileAddOutlined, PaperClipOutlined, SendOutlined, SmileOutlined, TableOutlined, VideoCameraOutlined } from "@ant-design/icons";
 import { Button, Input, Popover, Space } from "antd";
 import DOMPurify from "dompurify";
 import { Editor, generateJSON, type JSONContent } from "@tiptap/core";
@@ -9,6 +9,7 @@ import { markdownToMarkup } from "@hcengineering/text-markdown";
 import { MarkdownView } from "@/components/MarkdownView";
 import type { OpenImageViewer } from "@/components/ImageViewer";
 import { HULY_IMAGE_PREFIX } from "@/data/huly/markup";
+import { formatFileSize } from "@/domain/format";
 import type { Attachment, EditorTemplate, Person } from "@/domain/types";
 import { compatibleEditorExtensions, fromEditorDocument, toEditorDocument } from "./hulyEditorDocument";
 
@@ -25,7 +26,7 @@ type Props = {
   onLoadTemplates?: () => Promise<EditorTemplate[]>;
 } & (
   | { mode?: "description"; onSave: (markup: string, previousMarkup?: string) => Promise<void>; flushRef: RefObject<(() => Promise<boolean>) | null> }
-  | { mode: "comment"; onSubmit: (markup: string) => Promise<void> }
+  | { mode: "comment"; onSubmit: (markup: string, files: File[]) => Promise<void> }
 );
 
 const emojis = ["👍", "👎", "✅", "🎉", "😊", "🔥", "🚀", "👀", "❤️", "⚠️", "🤔", "🙏"];
@@ -59,6 +60,8 @@ export default function IssueDescriptionEditor(props: Props) {
   const [inTable, setInTable] = useState(false);
   const [uploadBusy, setUploadBusy] = useState(false);
   const [hasContent, setHasContent] = useState(false);
+  const [draftFiles, setDraftFiles] = useState<{ id: number; file: File }[]>([]);
+  const nextFileId = useRef(0);
   const [sending, setSending] = useState(false);
   const sendingRef = useRef(false);
   const commentMode = props.mode === "comment";
@@ -114,18 +117,19 @@ export default function IssueDescriptionEditor(props: Props) {
   async function submit() {
     const current = latest.current;
     const instance = editor.current;
-    if (current.mode !== "comment" || current.readOnly || !instance || instance.isEmpty || uploading.current || sendingRef.current) return;
+    if (current.mode !== "comment" || current.readOnly || !instance || (instance.isEmpty && !draftFiles.length) || sendingRef.current) return;
     sendingRef.current = true;
     setSending(true);
     setError("");
     setUploadError("");
     instance.setEditable(false, false);
     try {
-      await current.onSubmit(JSON.stringify(fromEditorDocument(instance.getJSON())));
+      await current.onSubmit(JSON.stringify(fromEditorDocument(instance.getJSON())), draftFiles.map((item) => item.file));
       if (!instance.isDestroyed) {
         instance.commands.clearContent(false);
         saved.current = draft.current = JSON.stringify(fromEditorDocument(instance.getJSON()));
         setHasContent(false);
+        setDraftFiles([]);
       }
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "评论发送失败。");
@@ -136,10 +140,22 @@ export default function IssueDescriptionEditor(props: Props) {
     }
   }
 
-  async function addFiles(files: File[]) {
-    const upload = latest.current.onUpload;
+  function addFiles(files: File[]): boolean {
+    const current = latest.current;
     const instance = editor.current;
-    if (!upload || !instance || uploading.current || sendingRef.current || latest.current.readOnly || !files.length) return;
+    if (!instance || current.readOnly || !files.length) return false;
+    if (uploading.current || sendingRef.current) return true;
+    if (current.mode === "comment") {
+      const added = files.map((file) => ({ id: nextFileId.current++, file }));
+      setDraftFiles((previous) => [...previous, ...added]);
+      return true;
+    }
+    if (!current.onUpload) return false;
+    void uploadInlineFiles(instance, files, current.onUpload);
+    return true;
+  }
+
+  async function uploadInlineFiles(instance: Editor, files: File[], upload: NonNullable<Props["onUpload"]>) {
     uploading.current = true;
     setUploadBusy(true);
     setUploadError("");
@@ -240,18 +256,14 @@ export default function IssueDescriptionEditor(props: Props) {
       editorProps: {
         attributes: { role: "textbox", "aria-label": latest.current.mode === "comment" ? "评论内容" : "任务描述", "aria-multiline": "true" },
         transformPastedHTML: (html) => DOMPurify.sanitize(html, { FORBID_TAGS: ["iframe", "object", "embed"] }),
-        handlePaste: (_view, event) => {
-          const files = Array.from(event.clipboardData?.files ?? []);
-          if (!files.length || !latest.current.onUpload || latest.current.readOnly) return false;
-          void addFiles(files);
-          return true;
+        handlePaste: (_view, { clipboardData }) => {
+          const items = Array.from(clipboardData?.items ?? []).flatMap((item) => {
+            const file = item.kind === "file" ? item.getAsFile() : null;
+            return file ? [file] : [];
+          });
+          return addFiles(items.length ? items : Array.from(clipboardData?.files ?? []));
         },
-        handleDrop: (_view, event, _slice, moved) => {
-          const files = Array.from(event.dataTransfer?.files ?? []);
-          if (moved || !files.length || !latest.current.onUpload || latest.current.readOnly) return false;
-          void addFiles(files);
-          return true;
-        },
+        handleDrop: (_view, event, _slice, moved) => !moved && addFiles(Array.from(event.dataTransfer?.files ?? [])),
         nodeViews: {
           image: (node) => makePreview("image", String(node.attrs["file-id"] ?? ""), safeMediaUrl(node.attrs.src), String(node.attrs.alt || node.attrs.title || "图片")),
           file: (node) => {
@@ -343,6 +355,7 @@ export default function IssueDescriptionEditor(props: Props) {
   useEffect(() => { editor.current?.setEditable(ready && !props.readOnly, false); }, [props.readOnly, ready]);
 
   const disabled = props.readOnly || !ready || sending;
+  const fileDisabled = (!commentMode && !props.onUpload) || uploadBusy;
   const iconButton = (label: string, icon: React.ReactNode, action?: () => void, blocked = false) => (
     <Button type="text" size="small" title={label} aria-label={label} icon={icon} disabled={disabled || blocked}
       onMouseDown={(event) => event.preventDefault()} onClick={action} />
@@ -352,6 +365,10 @@ export default function IssueDescriptionEditor(props: Props) {
     <div className={commentMode ? "hd-rich-description hd-rich-comment" : "hd-rich-description"} onBlur={(event) => {
       if (!commentMode && !event.currentTarget.contains(event.relatedTarget)) void flush();
     }}>
+      {commentMode && draftFiles.length ? <ul className="hd-attachment-grid hd-comment-draft-files" aria-label="待发送文件">
+        {draftFiles.map(({ id, file }) => <DraftFileCard key={id} file={file} disabled={disabled}
+          onRemove={() => setDraftFiles((previous) => previous.filter((item) => item.id !== id))} />)}
+      </ul> : null}
       <div ref={host} className="hd-rich-description-body" hidden={!ready} />
       {!ready && error && props.markdown.trim() ? (
         <div className="hd-detail-desc-box"><MarkdownView text={props.markdown} resolveImage={props.onResolveImage} onPreviewImage={props.onPreviewImage} /></div>
@@ -369,8 +386,8 @@ export default function IssueDescriptionEditor(props: Props) {
               event.currentTarget.value = "";
               void addFiles(files);
             }} />
-            {iconButton("添加附件", <PaperClipOutlined />, () => fileInput.current?.click(), !props.onUpload || uploadBusy)}
-            {iconButton("上传视频", <VideoCameraOutlined />, () => videoInput.current?.click(), !props.onUpload || uploadBusy)}
+            {iconButton(commentMode ? "添加附件" : "插入文件", <PaperClipOutlined />, () => fileInput.current?.click(), fileDisabled)}
+            {iconButton(commentMode ? "上传视频" : "插入视频", <VideoCameraOutlined />, () => videoInput.current?.click(), fileDisabled)}
             <span className="hd-rich-tool-divider" />
             {!commentMode ? <><Popover trigger="click" placement="bottomLeft" open={tableMenu} onOpenChange={setTableMenu} content={<Space direction="vertical" size={4} onClick={() => setTableMenu(false)}>
               {inTable ? <>
@@ -424,9 +441,8 @@ export default function IssueDescriptionEditor(props: Props) {
             </Popover>
           </div>
           {commentMode ? <div className="hd-comment-send">
-            {uploadBusy ? <span className="hd-rich-save-status" role="status">正在上传…</span> : null}
             <Button type="text" title="发表评论" aria-label="发表评论" icon={<SendOutlined />}
-              loading={sending} disabled={!hasContent || disabled || uploadBusy} onClick={() => void submit()} />
+              loading={sending} disabled={(!hasContent && !draftFiles.length) || disabled} onClick={() => void submit()} />
           </div> : <span className="hd-rich-save-status" role="status">{uploadBusy ? "正在上传…" : status}</span>}
         </div>
       ) : null}
@@ -435,6 +451,24 @@ export default function IssueDescriptionEditor(props: Props) {
       </div> : null}
     </div>
   );
+}
+
+function DraftFileCard({ file, disabled, onRemove }: { file: File; disabled: boolean; onRemove: () => void }) {
+  const [url, setUrl] = useState<string>();
+  useEffect(() => {
+    if (!file.type.startsWith("image/") || typeof URL.createObjectURL !== "function") return;
+    const preview = URL.createObjectURL(file);
+    setUrl(preview);
+    return () => URL.revokeObjectURL(preview);
+  }, [file]);
+  return <li className="hd-attachment-card">
+    <span className="hd-attachment-thumbnail" aria-hidden="true">{url ? <img src={url} alt="" /> : <PaperClipOutlined />}</span>
+    <span className="hd-attachment-info" style={{ flex: 1 }}>
+      <span className="hd-attachment-name" title={file.name}>{file.name}</span>
+      <span className="hd-attachment-size">{formatFileSize(file.size)}</span>
+    </span>
+    <Button type="text" size="small" disabled={disabled} aria-label={`移除 ${file.name}`} icon={<CloseOutlined />} onClick={onRemove} />
+  </li>;
 }
 
 function parseDocument(body: string): JSONContent {

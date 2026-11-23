@@ -111,6 +111,27 @@ describe("IssueDetail", () => {
     expect(onRefreshActivity).toHaveBeenCalledOnce();
   });
 
+  it("shows comment files only in activity and uses the description upload for pasted inline images", async () => {
+    const file = new File(["image"], "description.png", { type: "image/png" });
+    const attachment = { id: "attachment-1", issueId: "c-1", fileId: "comment-image", name: "comment.png", type: "image/png", size: 5, lastModified: 0 };
+    const onUploadDescriptionFile = vi.fn(async () => ({ ...attachment, fileId: "description-image", name: file.name }));
+    const onUploadAttachment = vi.fn();
+    render(<IssueDetail issue={parentIssue} issues={[parentIssue]} statuses={statuses} people={people}
+      labels={[]} milestones={[]} components={[]}
+      comments={[{ id: "c-1", issueId: parentIssue.id, authorId: "p-1", authorName: "侯琛", body: "", createdOn: 10, attachments: [attachment] }]}
+      commentWrite mock={false} descriptionLoading={false} onClose={vi.fn()} onSelect={vi.fn()}
+      onUpdate={vi.fn(async () => undefined)} onComment={vi.fn(async () => undefined)}
+      onUploadDescriptionFile={onUploadDescriptionFile} onUploadAttachment={onUploadAttachment} />);
+    const activity = within(screen.getByRole("region", { name: "活动" }));
+    expect(activity.getByRole("button", { name: "预览 comment.png" })).toBeInTheDocument();
+    const taskAttachments = within(screen.getByRole("region", { name: "附件" }));
+    expect(taskAttachments.getByText("没有附件。")).toBeInTheDocument();
+    const description = await screen.findByRole("textbox", { name: "任务描述" });
+    fireEvent.paste(description, { clipboardData: { files: [file], getData: () => "" } });
+    await waitFor(() => expect(onUploadDescriptionFile).toHaveBeenCalledWith(file));
+    expect(onUploadAttachment).not.toHaveBeenCalled();
+  });
+
   it("loads the native description again after Strict Mode reinitializes the editor", async () => {
     const onUpdate = vi.fn<(patch: IssuePatch) => Promise<void>>().mockResolvedValue(undefined);
     const onClose = vi.fn();

@@ -185,20 +185,13 @@ export interface Comment {
   createdOn: number;
   providerLabel?: string;
   nativeMarkup?: string;
+  attachments?: Attachment[];
 }
 
 export type CommentFormat = "markdown" | "markup";
 
-export interface ActivityItem {
-  id: string;
-  issueId: string;
+export interface ActivityItem extends Comment {
   kind: "comment" | "update";
-  authorId: string | null;
-  authorName: string;
-  body: string;
-  createdOn: number;
-  providerLabel?: string;
-  nativeMarkup?: string;
   change?:
     | { type: "status"; statusId: string }
     | { type: "assignee" }

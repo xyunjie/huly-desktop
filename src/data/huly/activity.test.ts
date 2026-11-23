@@ -55,6 +55,16 @@ describe("Huly activity feed", () => {
     await expect(loadActivityFeed(client, issue, classes, context)).rejects.toThrow("network down");
   });
 
+  it("shows a saved file-only comment with its own attachment", async () => {
+    const file = { id: "attachment-1", issueId: "comment-1", fileId: "image-1", name: "image.png", type: "image/png", size: 42, lastModified: 0 };
+    const findAll = vi.fn().mockResolvedValue([{ _id: "comment-1", _class: classes.ChatMessage, attachments: 1 }]);
+    const readCommentAttachments = vi.fn().mockResolvedValue([file]);
+    const result = await loadActivityFeed({ findAll, fetchMarkup: vi.fn() }, { ...issue, referenceCount: 0 }, classes,
+      { ...context, readCommentAttachments });
+    expect(readCommentAttachments).toHaveBeenCalledWith(["comment-1"]);
+    expect(result.comments).toMatchObject([{ id: "comment-1", body: "", attachments: [file] }]);
+  });
+
   it("keeps file nodes from referenced comments without loading historical snapshots", async () => {
     const markup = '{"type":"doc","content":[{"type":"file","attrs":{"file-id":"file-1"}}]}';
     const ref = "6afac43b3bdbbe14f03549b4";

@@ -6,6 +6,7 @@ import { RenderBoundary } from "@/components/RenderBoundary";
 import { inlineDescriptionText, resolveActivityDescription } from "@/data/huly/activityDescription";
 import { activityTextDiff, groupActivity } from "@/domain/activity";
 import type { ActivityItem, Attachment, Comment, EditorTemplate, Issue, Person, Status } from "@/domain/types";
+import { AttachmentCards } from "./IssueAttachments";
 import { StatusIcon } from "./StatusBadge";
 
 const RichEditor = lazy(() => import("./IssueDescriptionEditor"));
@@ -22,8 +23,7 @@ type Props = {
   error?: string | null;
   readOnly: boolean;
   onRefresh?: () => void;
-  onSubmit?: (markup: string) => Promise<void>;
-  onUpload?: (file: File) => Promise<Attachment | void>;
+  onSubmit?: (markup: string, files: File[]) => Promise<void>;
   onDownload?: (attachment: Attachment) => Promise<void>;
   onResolveImage?: (src: string) => Promise<string | null>;
   onLoadTemplates?: () => Promise<EditorTemplate[]>;
@@ -56,7 +56,7 @@ export function IssueActivity(props: Props) {
       <RenderBoundary fallback={<p className="hd-activity-warning" role="alert">评论编辑器未能加载，仍可查看已有活动。</p>}>
         <Suspense fallback={<Skeleton title={false} paragraph={{ rows: 1 }} />}>
           <RichEditor mode="comment" issueId={props.issue.id} markdown="" readOnly={false} people={props.people}
-            onSubmit={props.onSubmit} onUpload={props.onUpload} onDownload={props.onDownload}
+            onSubmit={props.onSubmit} onDownload={props.onDownload}
             onResolveImage={props.onResolveImage} onLoadTemplates={props.onLoadTemplates} />
         </Suspense>
       </RenderBoundary>
@@ -120,7 +120,10 @@ function ActivityRow({ item, statuses, issue, onResolveImage, onReadSnapshot, on
         {item.kind === "comment" ? <span>留下评论</span> : change?.type === "description" ? <span>更改了描述</span> : null}
         {date && !Number.isNaN(date.valueOf()) ? <time dateTime={date.toISOString()}>于 {formatTime(date)}</time> : null}
       </div>
-      {item.kind === "comment" ? <ActivityCommentBody item={item} onResolveImage={onResolveImage} onDownload={onDownload} />
+      {item.kind === "comment" ? <>
+        {item.body || !item.attachments?.length ? <ActivityCommentBody item={item} onResolveImage={onResolveImage} onDownload={onDownload} /> : null}
+        {item.attachments?.length ? <AttachmentCards label="评论附件" attachments={item.attachments} onDownload={onDownload} resolveMedia={onResolveImage} /> : null}
+      </>
         : change?.type === "description" ? <DescriptionDiff change={change} onReadSnapshot={onReadSnapshot} onUnchanged={() => onUnchanged(item.id)} />
         : <div className="hd-activity-event">
           {change?.type === "status" ? <StatusIcon status={status} size={14} /> : change?.type === "assignee" ? <UserOutlined /> : change?.type === "created" ? <CheckSquareOutlined /> : null}

@@ -68,7 +68,7 @@ export class MockDeskClient implements DeskClient {
   private issues = clone(mockIssues);
   private comments = clone(mockComments);
   private attachments = clone(mockAttachments);
-  private attachmentFiles = new Map<string, Blob>();
+  private attachmentFiles = new Map<string, { file: File; blobUrl?: string }>();
   private milestones = clone(mockMilestones);
   private components = clone(mockComponents);
   private templates = clone(mockIssueTemplates);
@@ -438,17 +438,19 @@ export class MockDeskClient implements DeskClient {
     return clone(issue);
   }
 
-  async addComment(issueId: string, body: string, format: CommentFormat = "markdown"): Promise<Comment> {
+  async addComment(issueId: string, body: string, format: CommentFormat = "markdown", files: File[] = []): Promise<Comment> {
     this.assertWorkspace();
     const text = (format === "markup" ? decodeMarkupToMarkdown(body) : body).trim();
-    if (!text && format !== "markup") throw new Error("评论不能为空。");
+    if (!text && !files.length && format !== "markup") throw new Error("评论不能为空。");
+    const id = `c-${this.comments.length + 1}`;
     const comment: Comment = {
-      id: `c-${this.comments.length + 1}`,
+      id,
       issueId,
       authorId: this.account ? "p-bill" : null,
       authorName: this.account?.userName ?? "我",
       body: text,
       nativeMarkup: format === "markup" ? body : undefined,
+      attachments: files.map((file) => this.storeFile(id, file)),
       createdOn: Date.now(),
     };
     this.comments.push(comment);
@@ -456,9 +458,11 @@ export class MockDeskClient implements DeskClient {
     return clone(comment);
   }
 
-  async listAttachments(issueId: string, options?: { fileId?: string }): Promise<Attachment[]> {
+  async listAttachments(issueId: string, options?: { commentIds?: string[]; fileId?: string }): Promise<Attachment[]> {
     this.assertWorkspace();
-    return clone(this.attachments.filter((item) => item.issueId === issueId && (!options?.fileId || item.fileId === options.fileId)));
+    const comments = this.comments.filter((comment) => comment.issueId === issueId && options?.commentIds?.includes(comment.id));
+    return clone([...this.attachments.filter((item) => item.issueId === issueId), ...comments.flatMap((comment) => comment.attachments ?? [])]
+      .filter((item) => !options?.fileId || item.fileId === options.fileId));
   }
 
   workspaceFileId(src: string): string | null {
@@ -468,7 +472,7 @@ export class MockDeskClient implements DeskClient {
   async fetchWorkspaceFile(fileId: string, signal: AbortSignal): Promise<Response> {
     this.assertWorkspace();
     signal.throwIfAborted();
-    const file = this.attachmentFiles.get(fileId);
+    const file = this.attachmentFiles.get(fileId)?.file;
     if (file) return new Response(file);
     if (fileId === "blob-mock-1" && this.attachments.some((item) => item.fileId === fileId)) {
       return new Response(mockHar, { headers: { "Content-Type": "application/json" } });
@@ -478,33 +482,43 @@ export class MockDeskClient implements DeskClient {
 
   async resolveImageSrc(src: string): Promise<string | null> {
     const fileId = this.workspaceFileId(src);
-    return this.attachments.find((item) => item.fileId === fileId)?.blobUrl ?? null;
+    return fileId ? this.attachmentFiles.get(fileId)?.blobUrl ?? null : null;
   }
 
   async uploadAttachment(issueId: string, file: File): Promise<Attachment> {
     this.assertWorkspace();
+    const item = this.storeFile(issueId, file);
+    this.attachments.unshift(item);
+    return clone(item);
+  }
+
+  async uploadInlineFile(issueId: string, file: File): Promise<Attachment> {
+    this.assertWorkspace();
+    return this.storeFile(issueId, file);
+  }
+
+  private storeFile(issueId: string, file: File): Attachment {
     const blobUrl = typeof URL !== "undefined" && typeof URL.createObjectURL === "function"
       ? URL.createObjectURL(file)
       : undefined;
-    const item: Attachment = {
-      id: `att-${Date.now()}-${this.attachments.length + 1}`,
+    const fileId = crypto.randomUUID();
+    this.attachmentFiles.set(fileId, { file, blobUrl });
+    return {
+      id: fileId,
       issueId,
-      fileId: `blob-${Date.now()}-${this.attachments.length + 1}`,
+      fileId,
       name: file.name,
       size: file.size,
       type: file.type || "application/octet-stream",
       lastModified: file.lastModified || Date.now(),
       blobUrl,
     };
-    this.attachmentFiles.set(item.fileId, file);
-    this.attachments.unshift(item);
-    return clone(item);
   }
 
   async downloadAttachment(attachment: Attachment): Promise<void> {
     this.assertWorkspace();
     const href =
-      attachment.blobUrl ?? this.attachments.find((item) => item.fileId === attachment.fileId)?.blobUrl ??
+      attachment.blobUrl ?? this.attachmentFiles.get(attachment.fileId)?.blobUrl ??
       (typeof Blob !== "undefined" && typeof URL !== "undefined" && typeof URL.createObjectURL === "function"
         ? URL.createObjectURL(new Blob([`示例附件：${attachment.name}`], { type: "text/plain" }))
         : null);
@@ -520,7 +534,11 @@ export class MockDeskClient implements DeskClient {
   async deleteAttachment(_issueId: string, attachmentId: string): Promise<void> {
     this.assertWorkspace();
     const fileId = this.attachments.find((item) => item.id === attachmentId)?.fileId;
-    if (fileId) this.attachmentFiles.delete(fileId);
+    if (fileId) {
+      const url = this.attachmentFiles.get(fileId)?.blobUrl;
+      if (url) URL.revokeObjectURL(url);
+      this.attachmentFiles.delete(fileId);
+    }
     this.attachments = this.attachments.filter((item) => item.id !== attachmentId);
   }
 

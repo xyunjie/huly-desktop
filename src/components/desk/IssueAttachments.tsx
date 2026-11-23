@@ -8,28 +8,21 @@ import type { Attachment } from "@/domain/types";
 
 type ResolveMedia = (src: string) => Promise<string | null>;
 
-export function IssueAttachments({ attachments, readOnly, onUpload, onDownload, onDelete, resolveMedia }: {
+type CardProps = {
   attachments: Attachment[];
-  readOnly: boolean;
-  onUpload?: (file: File) => Promise<Attachment | void>;
   onDownload?: (attachment: Attachment) => Promise<void>;
   onDelete?: (attachmentId: string) => Promise<void>;
   resolveMedia?: ResolveMedia;
+  label?: string;
+};
+
+export function IssueAttachments({ attachments, readOnly, onUpload, onDownload, onDelete, resolveMedia }: CardProps & {
+  readOnly: boolean;
+  onUpload?: (file: File) => Promise<Attachment | void>;
 }) {
   const fileInput = useRef<HTMLInputElement>(null);
-  const previewTrigger = useRef<HTMLButtonElement>(null);
   const [uploading, setUploading] = useState(false);
-  const [preview, setPreview] = useState<Attachment | null>(null);
   const [error, setError] = useState<string | null>(null);
-
-  async function run(action: () => Promise<unknown>, fallback: string) {
-    setError(null);
-    try {
-      await action();
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : fallback);
-    }
-  }
 
   return (
     <section className="hd-detail-section" aria-label="附件">
@@ -46,8 +39,14 @@ export function IssueAttachments({ attachments, readOnly, onUpload, onDownload, 
               event.target.value = "";
               if (!file || uploading) return;
               setUploading(true);
-              await run(() => onUpload(file), "附件上传失败。");
-              setUploading(false);
+              setError(null);
+              try {
+                await onUpload(file);
+              } catch (reason) {
+                setError(reason instanceof Error ? reason.message : "附件上传失败。");
+              } finally {
+                setUploading(false);
+              }
             }} />
             <Button size="small" icon={<UploadOutlined />} loading={uploading} onClick={() => fileInput.current?.click()}>
               上传附件
@@ -55,9 +54,30 @@ export function IssueAttachments({ attachments, readOnly, onUpload, onDownload, 
           </>
         ) : null}
       </div>
+      {error ? <Typography.Paragraph type="danger" role="alert">{error}</Typography.Paragraph> : null}
+      {attachments.length === 0 ? <Typography.Text type="secondary">没有附件。</Typography.Text> :
+        <AttachmentCards attachments={attachments} onDownload={onDownload} onDelete={readOnly ? undefined : onDelete} resolveMedia={resolveMedia} />}
+    </section>
+  );
+}
+
+export function AttachmentCards({ attachments, onDownload, onDelete, resolveMedia, label = "附件列表" }: CardProps) {
+  const previewTrigger = useRef<HTMLButtonElement>(null);
+  const [preview, setPreview] = useState<Attachment | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function run(action: () => Promise<unknown>, fallback: string) {
+    setError(null);
+    try {
+      await action();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : fallback);
+    }
+  }
+
+  return <>
       {error && !preview ? <Typography.Paragraph type="danger" role="alert">{error}</Typography.Paragraph> : null}
-      {attachments.length === 0 ? <Typography.Text type="secondary">没有附件。</Typography.Text> : (
-        <ul className="hd-attachment-grid" aria-label="附件列表">
+      <ul className="hd-attachment-grid" aria-label={label}>
           {attachments.map((attachment) => (
             <li key={attachment.id} className="hd-attachment-card">
               <button type="button" className="hd-attachment-open" aria-label={`预览 ${attachment.name}`} onClick={(event) => {
@@ -75,7 +95,7 @@ export function IssueAttachments({ attachments, readOnly, onUpload, onDownload, 
                 <Button className="hd-attachment-action" type="text" size="small" icon={<DownloadOutlined />} title="下载" aria-label={`下载 ${attachment.name}`}
                   onClick={() => void run(() => onDownload(attachment), "附件下载失败。")} />
               ) : null}
-              {!readOnly && onDelete ? (
+              {onDelete ? (
                 <Popconfirm title="确认删除该附件？" okText="删除" cancelText="取消"
                   onConfirm={() => run(() => onDelete(attachment.id), "附件删除失败。")}>
                   <Button className="hd-attachment-action" type="text" size="small" icon={<DeleteOutlined />} danger title="删除" aria-label={`删除 ${attachment.name}`} />
@@ -83,8 +103,7 @@ export function IssueAttachments({ attachments, readOnly, onUpload, onDownload, 
               ) : null}
             </li>
           ))}
-        </ul>
-      )}
+      </ul>
       {preview ? (
         <AttachmentMedia key={preview.id} attachment={preview} resolveMedia={resolveMedia} viewer={{
           close: () => { setPreview(null); previewTrigger.current?.focus(); },
@@ -92,8 +111,7 @@ export function IssueAttachments({ attachments, readOnly, onUpload, onDownload, 
           error,
         }} />
       ) : null}
-    </section>
-  );
+  </>;
 }
 
 function mediaKind({ type, name }: Attachment) {

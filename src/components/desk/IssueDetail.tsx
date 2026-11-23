@@ -25,7 +25,6 @@ import type {
   ActivityItem,
   Attachment,
   Comment,
-  CommentFormat,
   Component,
   EditorTemplate,
   Issue,
@@ -69,6 +68,7 @@ export function IssueDetail({
   onComment,
   onOpenCreateSubIssue,
   onUploadAttachment,
+  onUploadDescriptionFile,
   onDownloadAttachment,
   onDeleteAttachment,
   onResolveImage,
@@ -97,9 +97,10 @@ export function IssueDetail({
   onClose: () => void;
   onSelect: (id: string) => void;
   onUpdate: (patch: IssuePatch) => Promise<void>;
-  onComment: (body: string, format?: CommentFormat) => Promise<void>;
+  onComment: (markup: string, files: File[]) => Promise<void>;
   onOpenCreateSubIssue?: (parentId: string) => void;
   onUploadAttachment?: (file: File) => Promise<Attachment | void>;
+  onUploadDescriptionFile?: (file: File) => Promise<Attachment>;
   onDownloadAttachment?: (attachment: Attachment) => Promise<void>;
   onDeleteAttachment?: (attachmentId: string) => Promise<void>;
   onResolveImage?: (src: string) => Promise<string | null>;
@@ -346,7 +347,7 @@ export function IssueDetail({
                       readOnly={readOnly}
                       people={people}
                       onSave={(descriptionMarkup, previousDescriptionMarkup) => onUpdate({ descriptionMarkup, previousDescriptionMarkup })}
-                      onUpload={onUploadAttachment}
+                      onUpload={onUploadDescriptionFile}
                       onDownload={onDownloadAttachment}
                       onResolveImage={onResolveImage}
                       onPreviewImage={previewDescriptionImage}
@@ -443,8 +444,8 @@ export function IssueDetail({
 
             <IssueActivity key={issue.id} issue={issue} people={people} statuses={statuses} comments={comments} activity={activity}
               loading={activityLoading} error={activityError} readOnly={readOnly} onRefresh={onRefreshActivity}
-              onSubmit={commentWrite ? (markup) => onComment(markup, "markup") : undefined}
-              onUpload={onUploadAttachment} onDownload={onDownloadAttachment} onResolveImage={onResolveImage}
+              onSubmit={commentWrite ? onComment : undefined}
+              onDownload={onDownloadAttachment} onResolveImage={onResolveImage}
               onLoadTemplates={onLoadEditorTemplates} onReadSnapshot={onReadDescriptionSnapshot} />
           </div>
         </main>

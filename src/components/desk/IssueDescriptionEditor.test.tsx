@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import IssueDescriptionEditor from "./IssueDescriptionEditor";
 
@@ -57,28 +57,50 @@ describe("IssueDescriptionEditor", () => {
     expect(onSubmit).not.toHaveBeenCalled();
     fireEvent.click(send);
     await waitFor(() => expect(send).toBeDisabled());
-    expect(onSubmit).toHaveBeenCalledWith(expect.stringContaining("检查通过"));
+    expect(onSubmit).toHaveBeenCalledWith(expect.stringContaining("检查通过"), []);
   });
 
-  it("opens a video picker and uses the regular attachment upload", async () => {
+  it("queues a video from the picker and submits it with the comment", async () => {
     const file = new File(["video-data"], "演示.mp4", { type: "video/mp4" });
-    const onUpload = vi.fn(async (video: File) => ({
-      id: "attachment-1", issueId: "issue-1", fileId: "video-blob", name: video.name,
-      size: video.size, type: "application/octet-stream", lastModified: video.lastModified,
-    }));
-    const onSubmit = vi.fn(async (_markup: string) => undefined);
+    const onSubmit = vi.fn(async (_markup: string, _files: File[]) => undefined);
     const { container } = render(<IssueDescriptionEditor mode="comment" issueId="issue-1" markdown="" readOnly={false}
-      people={[]} onSubmit={onSubmit} onUpload={onUpload} onResolveImage={async () => "blob:video-preview"} />);
+      people={[]} onSubmit={onSubmit} />);
     const picker = container.querySelector<HTMLInputElement>('input[accept="video/*"]')!;
     const chooseFile = vi.spyOn(picker, "click");
     fireEvent.click(await screen.findByRole("button", { name: "上传视频" }));
     expect(chooseFile).toHaveBeenCalledOnce();
     fireEvent.change(picker, { target: { files: [file] } });
-    const composer = screen.getByRole("textbox", { name: "评论内容" });
-    await waitFor(() => expect(composer.querySelector("video")).toHaveAttribute("src", "blob:video-preview"));
-    expect(onUpload).toHaveBeenCalledWith(file);
+    expect(within(screen.getByRole("list", { name: "待发送文件" })).getByText("演示.mp4")).toBeInTheDocument();
+    expect(onSubmit).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "发表评论" }));
-    await waitFor(() => expect(onSubmit).toHaveBeenCalledWith(expect.stringContaining('"data-file-type":"video/mp4"')));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledWith(expect.any(String), [file]));
+  });
+
+  it("queues the current clipboard file despite the same name, and keeps it after a failed send", async () => {
+    const old = new File(["prior contents"], "image.png", { type: "image/png" });
+    const current = new File(["current screenshot"], "image.png", { type: "image/png" });
+    const onSubmit = vi.fn<(markup: string, files: File[]) => Promise<void>>()
+      .mockRejectedValueOnce(new Error("暂时无法发送"))
+      .mockResolvedValue(undefined);
+    render(<IssueDescriptionEditor mode="comment" issueId="issue-1" markdown="" readOnly={false} people={[]} onSubmit={onSubmit} />);
+    const composer = await screen.findByRole("textbox", { name: "评论内容" });
+    fireEvent.paste(composer, { clipboardData: { files: [old], getData: () => "" } });
+    fireEvent.click(screen.getByRole("button", { name: "移除 image.png" }));
+    fireEvent.paste(composer, { clipboardData: {
+      files: [old], items: [{ kind: "file", getAsFile: () => current }], getData: () => "",
+    } });
+    const send = screen.getByRole("button", { name: "发表评论" });
+    expect(send).toBeEnabled();
+    expect(onSubmit).not.toHaveBeenCalled();
+    await act(async () => { fireEvent.click(send); });
+    expect(screen.getByRole("alert")).toHaveTextContent("暂时无法发送");
+    expect(onSubmit.mock.calls[0][1][0]).toBe(current);
+    expect(screen.getByRole("list", { name: "待发送文件" })).toBeInTheDocument();
+    const retry = screen.getByRole("button", { name: "发表评论" });
+    expect(retry).toBeEnabled();
+    await act(async () => { fireEvent.click(retry); });
+    expect(screen.queryByRole("list", { name: "待发送文件" })).not.toBeInTheDocument();
+    expect(onSubmit.mock.calls[1][1][0]).toBe(current);
   });
 
   it("inserts a native table, mention and emoji from the footer and keeps a failed draft for retry", async () => {

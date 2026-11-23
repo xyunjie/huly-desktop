@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Huly Desk",
-  "version": "1.1.3",
+  "version": "1.1.4",
   "identifier": "cn.all666.huly-desk",
   "build": {
     "beforeDevCommand": "pnpm dev",

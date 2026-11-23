@@ -800,6 +800,7 @@ body {
   pointer-events: none;
 }
 .hd-rich-comment { border-color: #dddfe4; background: #fff; }
+.hd-comment-draft-files { border: 0; border-bottom: 1px solid #e0e2e6; border-radius: 0; background: transparent; }
 .hd-rich-comment .hd-rich-description-body .tiptap { min-height: 48px; padding: 9px 12px 4px; max-height: 280px; overflow: auto; }
 .hd-rich-comment .hd-rich-description-body .tiptap[contenteditable="true"] > p:only-child:has(> br.ProseMirror-trailingBreak:only-child)::before { content: "开始输入…"; }
 .hd-rich-comment .hd-rich-description-footer { padding: 3px 9px 7px; }

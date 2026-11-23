@@ -8,7 +8,6 @@ import {
   type ActivityItem,
   type Attachment,
   type Comment,
-  type CommentFormat,
   type Component,
   type ComponentInput,
   type CreateIssueInput,
@@ -103,7 +102,8 @@ export function DeskScreen(props: {
   onUpdate: (id: string, patch: IssuePatch) => Promise<void>;
   onCreate: (input: CreateIssueInput) => Promise<void>;
   onOpenCreateSubIssue: (parentId: string) => void;
-  onComment: (body: string, format?: CommentFormat) => Promise<void>;
+  onComment: (markup: string, files: File[]) => Promise<void>;
+  onUploadDescriptionFile: (file: File) => Promise<Attachment>;
   onUploadAttachment: (file: File) => Promise<Attachment | void>;
   onDownloadAttachment: (attachment: Attachment) => Promise<void>;
   onDeleteAttachment: (attachmentId: string) => Promise<void>;
@@ -187,6 +187,7 @@ export function DeskScreen(props: {
         onComment={props.onComment}
         onOpenCreateSubIssue={props.onOpenCreateSubIssue}
         onUploadAttachment={props.onUploadAttachment}
+        onUploadDescriptionFile={props.onUploadDescriptionFile}
         onDownloadAttachment={props.onDownloadAttachment}
         onDeleteAttachment={props.onDeleteAttachment}
         onResolveImage={props.onResolveImage}

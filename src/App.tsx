@@ -1117,14 +1117,19 @@ export default function App() {
             setCreateParentId(parentId);
             setCreateOpen(true);
           }}
-          onComment={async (body, format) => {
+          onComment={async (markup, files) => {
             const client = clientRef.current;
             if (!client || !desk.selectedId || offlineReadOnly) throw new Error("当前无法发表评论。");
             const token = detailGen.current;
-            const comment = await client.addComment(desk.selectedId, body, format);
+            const comment = await client.addComment(desk.selectedId, markup, "markup", files);
             setDesk((current) => current && current.selectedId === comment.issueId && current.detail !== "closed"
               && detailGen.current === token && !current.comments.some((item) => item.id === comment.id)
               ? { ...current, comments: [...current.comments, comment] } : current);
+          }}
+          onUploadDescriptionFile={async (file) => {
+            const client = clientRef.current;
+            if (!client || !desk.selectedId || offlineReadOnly) throw new Error("当前无法在描述中插入文件。");
+            return client.uploadInlineFile(desk.selectedId, file);
           }}
           onUploadAttachment={async (file) => {
             const client = clientRef.current;

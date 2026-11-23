@@ -61,11 +61,12 @@ export interface DeskClient {
   loadIssueTimeline(issue: Issue, options?: { commentsOnly?: boolean }): Promise<IssueTimeline>;
   listEditorTemplates(): Promise<EditorTemplate[]>;
   readDescriptionSnapshot?(ref: string): Promise<string>;
-  addComment(issueId: string, body: string, format?: CommentFormat): Promise<Comment>;
+  addComment(issueId: string, body: string, format?: CommentFormat, files?: File[]): Promise<Comment>;
   hydrateIssue(issue: Issue): Promise<Issue>;
   listAttachments(issueId: string, options?: { commentIds?: string[]; fileId?: string }): Promise<Attachment[]>;
   workspaceFileId(src: string): string | null;
   fetchWorkspaceFile(fileId: string, signal: AbortSignal): Promise<Response>;
+  uploadInlineFile(issueId: string, file: File): Promise<Attachment>;
   uploadAttachment(issueId: string, file: File): Promise<Attachment>;
   downloadAttachment(attachment: Attachment): Promise<void>;
   deleteAttachment(issueId: string, attachmentId: string): Promise<void>;
