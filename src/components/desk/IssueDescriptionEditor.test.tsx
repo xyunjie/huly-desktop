@@ -105,8 +105,7 @@ describe("IssueDescriptionEditor", () => {
 
   it("inserts a native table, mention and emoji from the footer and keeps a failed draft for retry", async () => {
     const onSave = vi.fn<(markup: string, previousMarkup?: string) => Promise<void>>()
-      .mockRejectedValueOnce(new Error("暂时无法写入"))
-      .mockResolvedValue(undefined);
+      .mockRejectedValue(new Error("暂时无法写入"));
     render(<IssueDescriptionEditor
       issueId="issue-1"
       markdown="正文内容"
@@ -132,6 +131,7 @@ describe("IssueDescriptionEditor", () => {
     fireEvent.blur(description);
     expect(await screen.findByRole("alert")).toHaveTextContent("暂时无法写入");
     expect(within(description).getByRole("table")).toBeInTheDocument();
+    onSave.mockResolvedValue(undefined);
     fireEvent.click(screen.getByRole("button", { name: "重试保存" }));
     await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("已保存"));
     const [markup] = onSave.mock.lastCall!;
