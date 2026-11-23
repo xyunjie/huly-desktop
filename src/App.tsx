@@ -1,4 +1,4 @@
-import { BellOutlined, PlusOutlined, SyncOutlined } from "@ant-design/icons";
+import { BellOutlined, PlusOutlined } from "@ant-design/icons";
 import { Badge, Button, Tag, Tooltip } from "antd";
 import { useEffect, useRef, useState } from "react";
 import { DeskScreen } from "@/components/desk/DeskScreen";
@@ -985,61 +985,48 @@ export default function App() {
   const shownStatuses = desk ? withFallbackStatuses(desk.statuses, shownIssues) : [];
   const unreadNotifications = notifications.filter((item) => !item.isViewed).length;
 
-  const topbarStatus =
-    phase === "desk" && desk ? (
-      <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-        <Tooltip
-          title={
-            offlineReadOnly
-              ? "离线只读：当前使用本地缓存快照"
-              : desk.session.mode === "mock"
-                ? "示例数据模式"
-                : "WebSocket 实时同步已连接"
-          }
-        >
-          <Tag
-            color={offlineReadOnly ? "warning" : "success"}
-            icon={offlineReadOnly ? undefined : <SyncOutlined spin={!offlineReadOnly && desk.session.mode !== "mock"} />}
-            style={{ marginInlineEnd: 0, fontSize: 11, lineHeight: "18px", paddingInline: 6, borderRadius: 999 }}
-          >
-            {offlineReadOnly ? "离线只读" : "实时同步"}
-          </Tag>
-        </Tooltip>
+  const inDesk = phase === "desk" && desk !== null;
 
-        <span aria-hidden style={{ width: 1, height: 14, background: "#e8e8e8", margin: "0 6px" }} />
-
-        <Badge count={unreadNotifications} size="small" offset={[-4, 4]}>
-          <Button
-            size="small"
-            type="text"
-            icon={<BellOutlined />}
-            aria-label="通知收件箱"
-            onClick={() => {
-              setNotificationsOpen(true);
-              void refreshNotifications(false);
-            }}
-            style={{ height: 26, width: 26, padding: 0 }}
-          />
-        </Badge>
-
+  return (
+    <WindowFrame
+      actions={inDesk ? (
         <Button
           size="small"
-          type="primary"
+          type="text"
           icon={<PlusOutlined />}
           disabled={offlineReadOnly}
           onClick={() => {
             setCreateParentId(null);
             setCreateOpen(true);
           }}
-          style={{ height: 26, fontSize: 12, borderRadius: 6, paddingInline: 10 }}
         >
           新建任务
         </Button>
-      </div>
-    ) : null;
-
-  return (
-    <WindowFrame status={topbarStatus}>
+      ) : null}
+      utilities={inDesk ? (
+        <>
+          {offlineReadOnly ? (
+            <Tooltip title="当前使用本地缓存快照">
+              <Tag color="warning" style={{ marginInlineEnd: 4 }}>离线只读</Tag>
+            </Tooltip>
+          ) : null}
+          <Tooltip title="通知收件箱">
+            <Badge count={unreadNotifications} size="small" offset={[-4, 4]}>
+              <Button
+                size="small"
+                type="text"
+                icon={<BellOutlined />}
+                aria-label="通知收件箱"
+                onClick={() => {
+                  setNotificationsOpen(true);
+                  void refreshNotifications(false);
+                }}
+              />
+            </Badge>
+          </Tooltip>
+        </>
+      ) : null}
+    >
       {phase === "login" || (phase !== "desk" && phase !== "pick-workspace") ? (
         <LoginScreen mock={mockDefault} busy={busy} error={error} initialCa={initialCa} onEnter={onSubmit} />
       ) : phase === "pick-workspace" && account ? (

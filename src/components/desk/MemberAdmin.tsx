@@ -1,3 +1,4 @@
+import { UserAddOutlined } from "@ant-design/icons";
 import { Avatar, Button, Empty, Select, Skeleton, Space, Table, Tag, Typography, Popconfirm, message } from "antd";
 import { PageTitle } from "./PageTitle";
 import { nameInitial } from "@/data/huly/mapping";
@@ -33,7 +34,7 @@ export function MemberAdmin({
           <>
             {refreshing ? <Typography.Text type="secondary">正在更新…</Typography.Text> : null}
             {manager ? (
-              <Button type="primary" style={{ marginLeft: "auto" }} onClick={onInvite} data-testid="invite-member">
+              <Button size="small" icon={<UserAddOutlined />} style={{ marginLeft: "auto", height: 28 }} onClick={onInvite} data-testid="invite-member">
                 邀请成员
               </Button>
             ) : null}

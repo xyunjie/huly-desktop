@@ -44,10 +44,11 @@ export function ProjectList({
             {refreshing ? <Typography.Text type="secondary">正在更新…</Typography.Text> : null}
             {loading ? <Typography.Text type="secondary">正在加载…</Typography.Text> : null}
             <Input
+              size="small"
               allowClear
               value={query}
               placeholder="搜索项目名称或代号"
-              style={{ width: 220, marginLeft: "auto" }}
+              style={{ width: 220, height: 28, marginLeft: "auto" }}
               onChange={(event) => setQuery(event.target.value)}
             />
           </>

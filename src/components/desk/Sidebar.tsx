@@ -1,5 +1,5 @@
-import { CheckSquareOutlined, ProjectOutlined, RobotOutlined, TeamOutlined } from "@ant-design/icons";
-import { Avatar, Dropdown, Menu, Typography } from "antd";
+import { AppstoreOutlined, CheckSquareOutlined, ProjectOutlined, RobotOutlined, TeamOutlined } from "@ant-design/icons";
+import { Avatar, Dropdown, Menu } from "antd";
 import { nameInitial } from "@/data/huly/mapping";
 import { avatarColor } from "@/domain/format";
 import { canManageWorkspaceMembers } from "@/domain/roles";
@@ -25,11 +25,9 @@ export function Sidebar({
   const selected = nav === "projects" || nav === "mine" || nav === "members" || nav === "mcp" ? [nav] : [];
   return (
     <div className="hd-sider" style={{ height: "100%", display: "flex", flexDirection: "column", background: "#f7f8fa" }}>
-      <div style={{ padding: "20px 20px 16px" }}>
-        <Typography.Text type="secondary" style={{ fontSize: 12, display: "block", lineHeight: "20px" }}>
-          工作区
-        </Typography.Text>
-        <div style={{ fontSize: 18, fontWeight: 600, lineHeight: "26px", color: "#172b4d" }}>{session.workspaceName}</div>
+      <div className="hd-workspace-header" title={`工作区：${session.workspaceName}`}>
+        <AppstoreOutlined aria-hidden="true" />
+        <span className="hd-workspace-name">{session.workspaceName}</span>
       </div>
       <div style={{ overflow: "auto", flex: 1, paddingTop: 4 }}>
         <Menu

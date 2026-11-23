@@ -329,7 +329,7 @@ export function DeskScreen(props: {
           <PageTitle extra={props.refreshing ? <Typography.Text type="secondary">正在更新…</Typography.Text> : null}>
             我的任务
           </PageTitle>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, padding: "8px 20px", alignItems: "center" }}>
+          <div className="hd-task-filters">
             <Input
               value={props.filters.search}
               placeholder="搜索任务标题或编号"
@@ -359,11 +359,10 @@ export function DeskScreen(props: {
                 props.onFilters({ ...props.filters, dueFilter: dueFilter as IssueFilters["dueFilter"] })
               }
             />
-            <Button type="link" onClick={props.onRefresh}>
-              刷新
-            </Button>
-            {props.refreshing ? <Typography.Text type="secondary">正在更新…</Typography.Text> : null}
-            <Typography.Text type="secondary">{pool.length === 0 ? "0 条" : `${visibleCount} 条`}</Typography.Text>
+            <div className="hd-task-filter-tools">
+              <Typography.Text type="secondary">{pool.length === 0 ? "0 条" : `${visibleCount} 条`}</Typography.Text>
+              <Button type="text" onClick={props.onRefresh}>刷新</Button>
+            </div>
           </div>
         </>
       )}
