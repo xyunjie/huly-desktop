@@ -305,7 +305,7 @@ export class MockDeskClient implements DeskClient {
     return issue ? clone(issue) : null;
   }
 
-  async listAssigned(personId: string): Promise<Issue[]> {
+  async listAssigned(personId: string): ReturnType<DeskClient["listAssigned"]> {
     this.assertWorkspace();
     await this.pause();
     const projectIds = new Set(
@@ -313,7 +313,8 @@ export class MockDeskClient implements DeskClient {
         .filter((project) => project.workspaceId === this.workspace?.id && !project.archived)
         .map((project) => project.id),
     );
-    return clone(this.issues.filter((issue) => issue.assigneeId === personId && projectIds.has(issue.projectId)));
+    const issues = this.issues.filter((issue) => issue.assigneeId === personId && projectIds.has(issue.projectId));
+    return clone({ issues, statuses: mockStatuses });
   }
 
   async updateIssue(id: string, patch: IssuePatch): Promise<Issue> {

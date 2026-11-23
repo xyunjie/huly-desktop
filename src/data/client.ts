@@ -52,9 +52,9 @@ export interface DeskClient {
   updateProjectMembers(projectId: string, memberIds: string[]): Promise<Project>;
   updateProject(projectId: string, patch: ProjectPatch): Promise<Project>;
   changeDisplayName(firstName: string, lastName: string): Promise<string>;
-  loadProject(projectId: string, targetIssueId?: string): Promise<ProjectBundle>;
+  loadProject(projectId: string, options?: { targetIssueId?: string; limit?: number }): Promise<ProjectBundle>;
   findIssueByIdentifier(identifier: string): Promise<Issue | null>;
-  listAssigned(personId: string): Promise<Issue[]>;
+  listAssigned(personId: string): Promise<Pick<ProjectBundle, "issues" | "statuses">>;
   updateIssue(id: string, patch: IssuePatch): Promise<Issue>;
   createIssue(input: CreateIssueInput): Promise<Issue>;
   loadIssueTimeline(issue: Issue): Promise<IssueTimeline>;

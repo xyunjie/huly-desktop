@@ -1,6 +1,6 @@
 import { Alert, Button, Input, Layout, Segmented, Select, Skeleton, Space, Typography } from "antd";
 import { RenderBoundary } from "@/components/RenderBoundary";
-import { filterIssues, hasActiveFilters, isTopLevelIssue } from "@/domain/filters";
+import { filterIssues, hasActiveFilters } from "@/domain/filters";
 import { formatCommentTime } from "@/domain/format";
 import { PRIORITY_LABEL, PRIORITY_ORDER } from "@/domain/priority";
 import {
@@ -50,6 +50,7 @@ import { ProjectSwitcher } from "./ProjectSwitcher";
 import { TemplateModal } from "./TemplateModal";
 
 const { Content, Sider } = Layout;
+const NO_STATUSES: Status[] = [];
 
 export function DeskScreen(props: {
   session: Session;
@@ -144,8 +145,9 @@ export function DeskScreen(props: {
   const immersive = props.nav === "project";
   const selected = props.issues.find((issue) => issue.id === props.selectedId) ?? null;
   const showWork = props.nav === "project" || props.nav === "mine";
-  const includeSubIssues = props.nav === "mine";
-  const pool = includeSubIssues ? props.issues : props.issues.filter(isTopLevelIssue);
+  const isMine = props.nav === "mine";
+  const assignedToMe = Boolean(props.session.userId && props.filters.assigneeId === props.session.userId);
+  const includeSubIssues = isMine || assignedToMe;
   const visibleCount = filterIssues(props.issues, props.filters, { includeSubIssues }).length;
   const showDetail = showWork && selected && props.detail !== "closed";
   const currentProject = props.projects.find((item) => item.id === props.projectId) ?? null;
@@ -243,12 +245,15 @@ export function DeskScreen(props: {
             />
           ) : null}
           <Select
+            aria-label="指派人筛选"
             value={props.filters.assigneeId}
-            style={{ width: 114 }}
+            style={{ width: 130 }}
             options={[
               { value: "all", label: "全部指派" },
+              ...(props.session.userId ? [{ value: props.session.userId, label: "指派给我" }] : []),
               { value: "unassigned", label: "未指派" },
-              ...props.people.map((person) => ({ value: person.id, label: person.name })),
+              ...props.people.filter((person) => person.id !== props.session.userId)
+                .map((person) => ({ value: person.id, label: person.name })),
             ]}
             onChange={(assigneeId) => props.onFilters({ ...props.filters, assigneeId })}
           />
@@ -313,6 +318,9 @@ export function DeskScreen(props: {
             </Button>
           ) : null}
           <Space size={4} style={{ marginLeft: "auto" }}>
+            {props.view === "list" && !props.loading ? (
+              <Typography.Text type="secondary">{visibleCount}{includeSubIssues ? " 条（含子任务）" : " 条顶层任务"}</Typography.Text>
+            ) : null}
             <Button onClick={() => props.onMetaModalOpen(true)}>里程碑 · 组件</Button>
             <Button onClick={() => props.onTemplateModalOpen(true)}>模板</Button>
             <Button type="link" onClick={props.onRefresh}>
@@ -330,6 +338,16 @@ export function DeskScreen(props: {
             我的任务
           </PageTitle>
           <div className="hd-task-filters">
+            <Select
+              aria-label="项目筛选"
+              value={props.filters.projectId ?? ""}
+              style={{ width: 184 }}
+              options={[
+                { value: "", label: "全部项目" },
+                ...props.projects.map((project) => ({ value: project.id, label: project.name })),
+              ]}
+              onChange={(projectId) => props.onFilters({ ...props.filters, projectId: projectId || undefined })}
+            />
             <Input
               value={props.filters.search}
               placeholder="搜索任务标题或编号"
@@ -360,7 +378,7 @@ export function DeskScreen(props: {
               }
             />
             <div className="hd-task-filter-tools">
-              <Typography.Text type="secondary">{pool.length === 0 ? "0 条" : `${visibleCount} 条`}</Typography.Text>
+              {!props.loading ? <Typography.Text type="secondary">{visibleCount} 条（含子任务）</Typography.Text> : null}
               <Button type="text" onClick={props.onRefresh}>刷新</Button>
             </div>
           </div>
@@ -387,6 +405,7 @@ export function DeskScreen(props: {
               filters={props.filters}
               selectedId={props.selectedId}
               includeSubIssues={includeSubIssues}
+              emptyText={isMine ? "没有指派给你的任务。" : undefined}
               onSelect={props.onSelect}
               onMove={props.nav === "project" && !props.offlineReadOnly ? props.onMove : undefined}
             />
@@ -396,6 +415,7 @@ export function DeskScreen(props: {
               statuses={props.statuses}
               people={props.people}
               filters={props.filters}
+              includeSubIssues={includeSubIssues}
               onSelect={props.onSelect}
               onMove={props.offlineReadOnly ? () => undefined : props.onMove}
             />
@@ -472,7 +492,7 @@ export function DeskScreen(props: {
         mock={props.session.mode === "mock"}
         projects={props.projects}
         projectId={props.projectId}
-        statuses={props.statuses}
+        statuses={isMine ? NO_STATUSES : props.statuses}
         people={props.people}
         milestones={props.milestones}
         components={props.components}

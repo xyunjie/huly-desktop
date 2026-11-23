@@ -9,10 +9,9 @@ import { WindowFrame } from "@/components/WindowFrame";
 import { MockDeskClient } from "@/data/mock/client";
 import { HulyDeskClient } from "@/data/huly/client";
 import type { DeskClient } from "@/data/client";
-import { descriptionIsRef } from "@/data/huly/mapping";
+import { descriptionIsRef, mapStatus } from "@/data/huly/mapping";
 import { loadOfflineSnapshot, saveOfflineSnapshot } from "@/domain/cache";
 import { connectMcpBridge } from "@/mcp/bridge";
-import { categoryFromHuly, localizeStatusName, statusColor } from "@/domain/status";
 import { explainConnectionError, initialDataMode, validateLogin, type LoginDraft } from "@/domain/login";
 import { redactSecrets, type StoredSession } from "@/domain/secrets";
 import { ACCOUNT_EXPIRED_MESSAGE, isAccountTokenInvalid, planSessionLaunch } from "@/domain/session";
@@ -61,6 +60,7 @@ interface DeskModel {
   labels: Label[];
   issues: Issue[];
   mine: Issue[];
+  mineStatuses: Status[];
   comments: Comment[];
   activity: ActivityItem[];
   activityLoading?: boolean;
@@ -71,6 +71,7 @@ interface DeskModel {
   nav: DeskNav;
   view: "list" | "board";
   filters: IssueFilters;
+  mineFilters: IssueFilters;
   selectedId: string | null;
   detail: "side" | "wide" | "closed";
   commentWrite: boolean;
@@ -118,7 +119,7 @@ export default function App() {
   const lastNotificationRequest = useRef(0);
   const projectCache = useRef(new Map<string, ProjectBundle>());
   const templateCache = useRef(new Map<string, IssueTemplate[]>());
-  const mineCache = useRef<{ userId: string; issues: Issue[] } | null>(null);
+  const mineCache = useRef<({ userId: string } & Awaited<ReturnType<DeskClient["listAssigned"]>>) | null>(null);
   const workspaceCache = useRef(new Map<string, WorkspaceCache>());
   const deskRef = useRef<DeskModel | null>(null);
   deskRef.current = desk;
@@ -171,8 +172,8 @@ export default function App() {
       if (current.nav === "project" && current.projectId) {
         const activeId = current.detail !== "closed" ? current.selectedId : null;
         void refreshProject(current.projectId, navGate.current.current(), activeId, true);
-      } else if (current.nav === "mine") {
-        void refreshMineSilent();
+      } else if (current.nav === "mine" && !current.loading && !current.refreshing) {
+        void refreshMine(navGate.current.current(), true);
       }
       void refreshNotifications(true);
     };
@@ -210,6 +211,7 @@ export default function App() {
       members: cachedWs?.members ?? deskRef.current?.members ?? [],
       bundles,
       mine: mineCache.current?.issues ?? deskRef.current?.mine ?? [],
+      mineStatuses: mineCache.current?.statuses ?? deskRef.current?.mineStatuses ?? [],
     };
     saveOfflineSnapshot(session.serverUrl, session.workspace, snapshot);
     setOfflineSavedAt(snapshot.savedAt);
@@ -313,6 +315,7 @@ export default function App() {
           labels: [],
           issues: [],
           mine: offline.mine,
+          mineStatuses: offline.mineStatuses ?? [],
           comments: [],
           activity: [],
           attachments: [],
@@ -321,6 +324,7 @@ export default function App() {
           nav: "projects",
           view: "list",
           filters: EMPTY_FILTERS,
+          mineFilters: EMPTY_FILTERS,
           selectedId: null,
           detail: "closed",
           commentWrite: false,
@@ -450,6 +454,7 @@ export default function App() {
       labels: [],
       issues: [],
       mine: offline?.mine ?? [],
+      mineStatuses: offline?.mineStatuses ?? [],
       comments: [],
       activity: [],
       attachments: [],
@@ -458,6 +463,7 @@ export default function App() {
       nav: "projects",
       view: "list",
       filters: EMPTY_FILTERS,
+      mineFilters: EMPTY_FILTERS,
       selectedId: null,
       detail: "closed",
       commentWrite: client.commentWrite,
@@ -482,16 +488,18 @@ export default function App() {
         client.listPeople(),
         client.listWorkspaceMembers().catch(() => [] as WorkspaceMember[]),
       ]);
-      if (!navGate.current.isCurrent(gen)) return;
-      setOfflineReadOnly(false);
+      const ownsNavigation = navGate.current.isCurrent(gen);
+      const active = deskRef.current;
+      if (clientRef.current !== client || (!ownsNavigation && (active?.session !== session || active.nav !== "mine"))) return;
+      if (ownsNavigation) setOfflineReadOnly(false);
       workspaceCache.current.set(session.workspace, { projects, people, members });
       setDesk((current) =>
         current && current.session.workspace === session.workspace
-          ? { ...current, projects, people, members, loading: false, refreshing: false }
+          ? { ...current, projects, people, members, ...(ownsNavigation ? { loading: false, refreshing: false } : {}) }
           : current,
       );
       persistOfflineCache(session);
-      void enrichCounts(gen, session);
+      if (ownsNavigation) void enrichCounts(gen, session);
     } catch (reason) {
       if (!navGate.current.isCurrent(gen)) return;
       const offline = loadOfflineSnapshot(session.serverUrl, session.workspace);
@@ -613,7 +621,7 @@ export default function App() {
     const capturedDetailToken = expectedDetailToken ?? detailGen.current;
     try {
       const [bundle, templates] = await Promise.all([
-        client.loadProject(projectId, preferredId ?? undefined),
+        client.loadProject(projectId, { targetIssueId: preferredId ?? undefined }),
         client.listTemplates(projectId).catch(() => [] as IssueTemplate[]),
       ]);
       if (!navGate.current.isCurrent(gen)) return;
@@ -736,41 +744,29 @@ export default function App() {
     void refreshProject(projectId, gen, options?.openDetail ? options?.issueId ?? null : null, false, detailToken);
   }
 
-  async function refreshMineSilent() {
-    const client = clientRef.current;
-    const session = deskRef.current?.session;
-    if (!client || !session?.userId) return;
-    try {
-      const issues = await client.listAssigned(session.userId);
-      mineCache.current = { userId: session.userId, issues };
-      setOfflineReadOnly(false);
-      setDesk((current) =>
-        current && current.nav === "mine"
-          ? { ...current, mine: mergeDescriptions(issues, current.mine), loading: false, refreshing: false }
-          : current,
-      );
-      persistOfflineCache(session);
-    } catch {
-      /* silent */
-    }
-  }
-
-  async function showMine() {
+  function showMine() {
     const client = clientRef.current;
     const session = deskRef.current?.session;
     if (!session) return;
     const gen = navGate.current.next();
     detailGen.current += 1;
-    const cached = session.userId && mineCache.current?.userId === session.userId ? mineCache.current.issues : null;
+    const cached = session.userId && mineCache.current?.userId === session.userId ? mineCache.current : null;
+    setError(null);
     setDesk((current) =>
       current
         ? {
             ...current,
             nav: "mine",
+            projectId: null,
             view: "list",
-            loading: !cached && Boolean(client),
-            refreshing: Boolean(cached),
-            mine: cached ?? current.mine,
+            loading: !cached && Boolean(client && session.userId),
+            refreshing: Boolean(cached && client),
+            mine: cached?.issues ?? current.mine,
+            mineStatuses: cached?.statuses ?? current.mineStatuses,
+            milestones: [],
+            components: [],
+            labels: [],
+            templates: [],
             comments: [],
             activity: [],
             attachments: [],
@@ -779,30 +775,33 @@ export default function App() {
           }
         : current,
     );
-    if (!client || !session.userId) {
-      setDesk((current) => (current ? { ...current, loading: false, refreshing: false } : current));
-      return;
-    }
+    void refreshMine(gen);
+  }
+
+  async function refreshMine(gen: number, silent = false) {
+    const client = clientRef.current;
+    const session = deskRef.current?.session;
+    if (!client || !session?.userId) return;
     try {
-      const issues = await client.listAssigned(session.userId);
-      if (!navGate.current.isCurrent(gen)) return;
+      const { issues, statuses } = await client.listAssigned(session.userId);
+      if (!navGate.current.isCurrent(gen) || clientRef.current !== client) return;
       setOfflineReadOnly(false);
-      mineCache.current = { userId: session.userId, issues };
+      mineCache.current = { userId: session.userId, issues, statuses };
       setDesk((current) =>
         current && current.nav === "mine"
-          ? { ...current, mine: mergeDescriptions(issues, current.mine), loading: false, refreshing: false }
+          ? { ...current, mine: mergeDescriptions(issues, current.mine), mineStatuses: statuses, loading: false, refreshing: false }
           : current,
       );
       persistOfflineCache(session);
     } catch (reason) {
-      if (!navGate.current.isCurrent(gen)) return;
+      if (silent || !navGate.current.isCurrent(gen) || clientRef.current !== client) return;
       const offline = loadOfflineSnapshot(session.serverUrl, session.workspace);
       if (offline) {
         setOfflineReadOnly(true);
         setOfflineSavedAt(offline.savedAt);
         setDesk((current) =>
           current && current.nav === "mine"
-            ? { ...current, mine: offline.mine, loading: false, refreshing: false }
+            ? { ...current, mine: offline.mine, mineStatuses: offline.mineStatuses ?? [], loading: false, refreshing: false }
             : current,
         );
         return;
@@ -982,7 +981,7 @@ export default function App() {
   }
 
   const shownIssues = desk ? (desk.nav === "mine" ? desk.mine : desk.issues) : [];
-  const shownStatuses = desk ? withFallbackStatuses(desk.statuses, shownIssues) : [];
+  const shownStatuses = desk ? withFallbackStatuses(desk.nav === "mine" ? desk.mineStatuses : desk.statuses, shownIssues) : [];
   const unreadNotifications = notifications.filter((item) => !item.isViewed).length;
 
   const inDesk = phase === "desk" && desk !== null;
@@ -1067,7 +1066,7 @@ export default function App() {
           projectId={desk.projectId}
           nav={desk.nav}
           view={desk.view}
-          filters={desk.filters}
+          filters={desk.nav === "mine" ? desk.mineFilters : desk.filters}
           selectedId={desk.selectedId}
           detail={desk.detail}
           error={error}
@@ -1085,7 +1084,9 @@ export default function App() {
           }}
           onProject={(projectId) => showProject(projectId)}
           onView={(view) => setDesk({ ...desk, view, detail: view === "board" ? "closed" : desk.detail })}
-          onFilters={(filters) => setDesk({ ...desk, filters })}
+          onFilters={(filters) => setDesk((current) => current && (current.nav === "mine"
+            ? { ...current, mineFilters: filters }
+            : { ...current, filters }))}
           onSelect={(id) => void selectIssue(id)}
           onDetail={(detail) => {
             if (detail === "closed") {
@@ -1384,13 +1385,7 @@ function withFallbackStatuses(statuses: Status[], issues: Issue[]): Status[] {
   for (const issue of issues) {
     if (!issue.statusId || known.has(issue.statusId)) continue;
     known.add(issue.statusId);
-    const category = categoryFromHuly({ id: issue.statusId });
-    extra.push({
-      id: issue.statusId,
-      name: localizeStatusName((issue.statusId.split(":").at(-1) || "状态").replace(/([a-z])([A-Z])/g, "$1 $2")),
-      category,
-      color: statusColor(category),
-    });
+    extra.push(mapStatus(issue.statusId));
   }
   return [...statuses, ...extra];
 }

@@ -27,6 +27,7 @@ export function filterIssues(
 
   return issues.filter((issue) => {
     if (!options?.includeSubIssues && !isTopLevelIssue(issue)) return false;
+    if (filters.projectId && filters.projectId !== issue.projectId) return false;
     if (filters.statusId !== "all" && issue.statusId !== filters.statusId) return false;
     if (filters.assigneeId === "unassigned" && issue.assigneeId) return false;
     if (filters.assigneeId !== "all" && filters.assigneeId !== "unassigned" && issue.assigneeId !== filters.assigneeId) {
@@ -52,6 +53,7 @@ export function filterIssues(
 export function hasActiveFilters(filters: IssueFilters): boolean {
   return Boolean(
     filters.search.trim() ||
+      filters.projectId ||
       filters.statusId !== "all" ||
       filters.assigneeId !== "all" ||
       filters.priority !== "all" ||

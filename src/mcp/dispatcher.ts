@@ -103,12 +103,12 @@ async function toolListIssues(client: DeskClient, args: Record<string, unknown>)
     ? projects.filter((p) => p.id === projectHint || p.identifier.toLowerCase() === projectHint.toLowerCase())
     : projects;
   if (projectHint && !matching.length) throw new Error(`找不到项目 ${projectHint}。`);
-  // shortcut: the existing project loader caps results at 500; use paged Huly queries when complete workspace lists are needed.
+  // shortcut: bound cross-project MCP scans; use paged Huly queries when complete workspace lists are needed.
   const maxProjects = 20;
   let truncated = matching.length > maxProjects;
   const rows: string[] = [];
   for (const project of matching.slice(0, maxProjects)) {
-    const bundle = await client.loadProject(project.id);
+    const bundle = await client.loadProject(project.id, { limit: PROJECT_ISSUE_LIMIT });
     truncated ||= client.mode === "huly" && bundle.issues.length >= PROJECT_ISSUE_LIMIT;
     const statuses = new Map(bundle.statuses.map((status) => [status.id, status.name]));
     for (const issue of bundle.issues) {
@@ -133,7 +133,8 @@ async function toolGetIssue(client: DeskClient, args: Record<string, unknown>) {
   if (!identifier) throw new Error("缺少 identifier。");
   const issue = await findIssue(client, identifier);
   const [bundle, hydrated, projects, people] = await Promise.all([
-    client.loadProject(issue.projectId, issue.id), client.hydrateIssue(issue), client.listProjects(), client.listPeople(),
+    client.loadProject(issue.projectId, { targetIssueId: issue.id, limit: PROJECT_ISSUE_LIMIT }),
+    client.hydrateIssue(issue), client.listProjects(), client.listPeople(),
   ]);
   const timeline = await client.loadIssueTimeline(issue).catch(() => null);
   const project = projects.find((p) => p.id === issue.projectId);
@@ -160,7 +161,7 @@ async function toolUpdateStatus(client: DeskClient, args: Record<string, unknown
   const statusName = str(args.status);
   if (!identifier || !statusName) throw new Error("缺少 identifier 或 status。");
   const issue = await findIssue(client, identifier);
-  const bundle = await client.loadProject(issue.projectId, issue.id);
+  const bundle = await client.loadProject(issue.projectId, { targetIssueId: issue.id, limit: PROJECT_ISSUE_LIMIT });
   const match = bundle.statuses.find(
     (s) => s.name === statusName || s.name.toLowerCase() === statusName.toLowerCase(),
   );

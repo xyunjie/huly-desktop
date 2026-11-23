@@ -18,6 +18,7 @@ export function IssueList({
   filters,
   selectedId,
   includeSubIssues,
+  emptyText = "该项目还没有任务。",
   onSelect,
   onMove,
 }: {
@@ -28,6 +29,7 @@ export function IssueList({
   filters: IssueFilters;
   selectedId: string | null;
   includeSubIssues: boolean;
+  emptyText?: string;
   onSelect: (id: string) => void;
   onMove?: (issueId: string, statusId: string) => void;
 }) {
@@ -35,7 +37,7 @@ export function IssueList({
   const [shownByGroup, setShownByGroup] = useState<{ scope: string; counts: Record<string, number> }>({ scope: "", counts: {} });
   const pagingScope = JSON.stringify([
     filters.groupBy, filters.search.trim(), filters.statusId, filters.assigneeId, filters.priority, filters.labelId,
-    filters.milestoneId, filters.dueFilter,
+    filters.milestoneId, filters.dueFilter, filters.projectId,
   ]);
   useEffect(() => setShownByGroup({ scope: pagingScope, counts: {} }), [pagingScope]);
 
@@ -74,7 +76,7 @@ export function IssueList({
   }, []);
 
   if (pool.length === 0) {
-    return <EmptyHint text={includeSubIssues ? "没有指派给你的任务。" : "该项目还没有任务。"} />;
+    return <EmptyHint text={emptyText} />;
   }
   if (visible.length === 0) {
     return <EmptyHint text="没有符合筛选条件的任务。" />;

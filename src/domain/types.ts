@@ -322,6 +322,7 @@ export type DueFilter = "all" | "overdue" | "today" | "week" | "no-due";
 
 export interface IssueFilters {
   search: string;
+  projectId?: string;
   statusId: string;
   assigneeId: string;
   priority: Priority | "all";

@@ -13,6 +13,7 @@ export function IssueBoard({
   statuses,
   people,
   filters,
+  includeSubIssues,
   onSelect,
   onMove,
 }: {
@@ -20,12 +21,13 @@ export function IssueBoard({
   statuses: Status[];
   people: Person[];
   filters: IssueFilters;
+  includeSubIssues: boolean;
   onSelect: (id: string) => void;
   onMove: (issueId: string, statusId: string) => void;
 }) {
   const [dragOverId, setDragOverId] = useState<string | null>(null);
-  const pool = issues.filter(isTopLevelIssue);
-  const visible = filterIssues(issues, { ...filters, statusId: "all" });
+  const pool = includeSubIssues ? issues : issues.filter(isTopLevelIssue);
+  const visible = filterIssues(issues, { ...filters, statusId: "all" }, { includeSubIssues });
   const todayStart = useMemo(() => {
     const now = new Date();
     return new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();

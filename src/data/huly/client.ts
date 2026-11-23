@@ -15,7 +15,7 @@ import {
   mapAccountWorkspace,
   withWorkspaceRenewal,
 } from "@/domain/session";
-import { PROJECT_ISSUE_LIMIT, type DeskClient } from "@/data/client";
+import type { DeskClient } from "@/data/client";
 import { canChangeWorkspaceRole, canRemoveWorkspaceMember } from "@/domain/members";
 import {
   emailFromSocial,
@@ -81,6 +81,7 @@ import {
   mapMilestone,
   mapPerson,
   mapProject,
+  mapStatus,
   mapStatuses,
   mapTimeReport,
   matchCurrentPerson,
@@ -440,7 +441,7 @@ export class HulyDeskClient implements DeskClient {
     return this.#userName;
   }
 
-  async loadProject(projectId: string, targetIssueId?: string): Promise<ProjectBundle> {
+  async loadProject(projectId: string, { targetIssueId, limit }: { targetIssueId?: string; limit?: number } = {}): Promise<ProjectBundle> {
     const plugins = this.plugins();
     const client = this.api();
     const project = await client.findOne<RawProject>(
@@ -452,7 +453,7 @@ export class HulyDeskClient implements DeskClient {
     const rawIssues = [...await client.findAll<RawIssue>(
       plugins.tracker.class.Issue,
       { space: projectId },
-      { limit: PROJECT_ISSUE_LIMIT, sort: { rank: plugins.sorting.Ascending } },
+      { limit, sort: { rank: plugins.sorting.Ascending } },
     )];
     if (targetIssueId && !rawIssues.some((issue) => issue._id === targetIssueId)) {
       const target = await client.findOne<RawIssue>(plugins.tracker.class.Issue, { _id: targetIssueId, space: projectId });
@@ -506,14 +507,23 @@ export class HulyDeskClient implements DeskClient {
     return issue ? mapIssue(issue, plainDescription(issue.description)) : null;
   }
 
-  async listAssigned(personId: string): Promise<Issue[]> {
+  async listAssigned(personId: string): ReturnType<DeskClient["listAssigned"]> {
     const plugins = this.plugins();
-    const rawIssues = await this.api().findAll<RawIssue>(
+    const client = this.api();
+    const rawIssues = await client.findAll<RawIssue>(
       plugins.tracker.class.Issue,
       { assignee: personId },
-      { limit: 200, sort: { modifiedOn: plugins.sorting.Descending } },
+      { sort: { modifiedOn: plugins.sorting.Descending } },
     );
-    return rawIssues.map((issue) => mapIssue(issue, plainDescription(issue.description)));
+    const statusIds = [...new Set(rawIssues.map((issue) => issue.status).filter(Boolean))];
+    const statusDocs = statusIds.length
+      ? await client.findAll<RawStatus>(plugins.tracker.class.IssueStatus, { _id: { $in: statusIds } })
+          .catch(() => [] as RawStatus[])
+      : [];
+    return {
+      issues: rawIssues.map((issue) => mapIssue(issue, plainDescription(issue.description))),
+      statuses: statusDocs.map((doc) => mapStatus(doc._id, doc)),
+    };
   }
 
   async hydrateIssue(issue: Issue): Promise<Issue> {

@@ -7,6 +7,7 @@ import {
   displayPersonName,
   mapIssue,
   mapProject,
+  mapStatus,
   mapStatuses,
   matchCurrentPerson,
   nameInitial,
@@ -130,6 +131,10 @@ describe("huly document mapping", () => {
     expect(issue.parentIds).toEqual(["parent-1"]);
   });
 
+  it("recognizes children recorded only through attachedTo", () => {
+    expect(mapIssue({ _id: "child", space: "proj", attachedTo: "parent-1" }).parentIds).toEqual(["parent-1"]);
+  });
+
   it("localizes built-in English status names and keeps custom Chinese names", () => {
     const statuses = mapStatuses(
       {
@@ -156,6 +161,11 @@ describe("huly document mapping", () => {
     );
     expect(statuses.map((status) => status.name)).toEqual(["完成", "取消", "待开始", "待复核", "进行中"]);
     expect(statuses.map((status) => status.category)).toEqual(["done", "canceled", "backlog", "in-progress", "in-progress"]);
+  });
+
+  it("does not expose a raw ID as the name of an unknown status", () => {
+    expect(mapStatus("6afac43b3bdbbe14f03549b4").name).toBe("未知状态");
+    expect(mapStatus("tracker:status:Done").name).toBe("完成");
   });
 
   it("formats Huly Last,First names", () => {

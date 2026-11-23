@@ -257,22 +257,14 @@ export function isParentReference(id: string | undefined, selfId: string): boole
 
 export function mapStatuses(project: RawProject, documents: RawStatus[]): Status[] {
   const byId = new Map(documents.map((status) => [status._id, status]));
-  const embedded = project.$lookup?.type?.statuses ?? [];
-  const ids = embedded.length > 0 ? embedded.map((status) => status._id) : documents.map((status) => status._id);
-  const unique = [...new Set(ids)];
-  return unique.map((id) => {
-    const doc = byId.get(id);
-    const slot = embedded.find((status) => status._id === id);
-    const rawName = doc?.name || slot?.name || slot?.title || fallbackStatusName(id);
-    const name = localizeStatusName(rawName);
-    const category = categoryFromHuly({ id, categoryId: doc?.category || slot?.category, name: rawName });
-    return {
-      id,
-      name,
-      category,
-      color: statusColor(category, typeof doc?.color === "string" ? doc.color : undefined),
-    };
-  });
+  const embedded = new Map((project.$lookup?.type?.statuses ?? []).map((status) => [status._id, status]));
+  return [...new Set([...embedded.keys(), ...byId.keys()])].map((id) => mapStatus(id, byId.get(id), embedded.get(id)));
+}
+
+export function mapStatus(id: string, doc?: RawStatus, slot?: RawProjectStatus): Status {
+  const rawName = doc?.name || slot?.name || slot?.title || fallbackStatusName(id);
+  const category = categoryFromHuly({ id, categoryId: doc?.category || slot?.category, name: rawName });
+  return { id, name: localizeStatusName(rawName), category, color: statusColor(category, doc?.color) };
 }
 
 function fallbackStatusName(id: string): string {
@@ -281,7 +273,7 @@ function fallbackStatusName(id: string): string {
   if (id.endsWith("InProgress") || id.endsWith("Coding") || id.endsWith("UnderReview")) return "进行中";
   if (id.endsWith("Done")) return "完成";
   if (id.endsWith("Canceled") || id.endsWith("Cancelled")) return "取消";
-  return "状态";
+  return "未知状态";
 }
 
 export function mapIssue(raw: RawIssue, description = ""): Issue {
@@ -289,6 +281,7 @@ export function mapIssue(raw: RawIssue, description = ""): Issue {
   for (const parent of raw.parents ?? []) {
     if (isParentReference(parent.parentId, raw._id)) parentIds.add(parent.parentId);
   }
+  if (raw.attachedTo && isParentReference(raw.attachedTo, raw._id)) parentIds.add(raw.attachedTo);
   return {
     id: raw._id,
     projectId: raw.space,

@@ -1,4 +1,4 @@
-import type { Issue, Person, Project, ProjectBundle, WorkspaceMember } from "./types";
+import type { Issue, Person, Project, ProjectBundle, Status, WorkspaceMember } from "./types";
 
 export interface OfflineWorkspaceSnapshot {
   savedAt: number;
@@ -7,6 +7,7 @@ export interface OfflineWorkspaceSnapshot {
   members: WorkspaceMember[];
   bundles: Record<string, ProjectBundle>;
   mine: Issue[];
+  mineStatuses?: Status[];
 }
 
 const PREFIX = "huly-desk:offline-cache:v1:";
@@ -29,6 +30,7 @@ export function loadOfflineSnapshot(serverUrl: string, workspace: string): Offli
       members: Array.isArray(parsed.members) ? parsed.members : [],
       bundles: parsed.bundles && typeof parsed.bundles === "object" ? parsed.bundles : {},
       mine: Array.isArray(parsed.mine) ? parsed.mine : [],
+      mineStatuses: Array.isArray(parsed.mineStatuses) ? parsed.mineStatuses : undefined,
     };
   } catch {
     return null;
