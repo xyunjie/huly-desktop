@@ -1,6 +1,6 @@
 [package]
 name = "huly-desk"
-version = "1.1.2"
+version = "1.1.3"
 description = "Huly Desk"
 authors = ["Huly Desk"]
 edition = "2021"

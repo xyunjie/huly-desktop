@@ -32,12 +32,16 @@ export function sameDescriptionMarkup(first: string, second?: string): boolean {
   }
 }
 
+export function isHulyFileId(value: unknown): value is string {
+  return typeof value === "string" && /^[a-z\d][a-z\d.:_-]{0,255}$/i.test(value);
+}
+
 export function extractHulyFileId(src: string, serverUrl?: string): string | null {
   const trimmed = src.trim();
   if (!trimmed) return null;
   function decodeId(segment: string): string | null {
     const id = decodeURIComponent(segment);
-    return /^[a-z\d][a-z\d._-]{0,255}$/i.test(id) ? id : null;
+    return isHulyFileId(id) ? id : null;
   }
   try {
     const prefix = [HULY_IMAGE_PREFIX, "image://"].find((value) => trimmed.startsWith(value));

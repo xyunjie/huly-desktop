@@ -74,6 +74,8 @@ pnpm tauri build --target universal-apple-darwin --bundles dmg
 
 Huly Desk 必须保持打开；工具使用当前连接的工作区和账号权限，既能读取任务，也能修改状态和发表评论。切换工作区后，请确认目标再发起写入。
 
+**直接读取图片和附件**：先调用 `list_issue_attachments`（传入任务编号 `identifier`），再用该编号和列表中的 `fileId` 调用 `get_issue_attachment`。支持任务附件和描述、评论中的 Huly 文件，不需要截图或让客户端访问 Huly 链接。PNG、JPEG、GIF 和 WebP 原件以 MCP 图片返回；其他文件以带 MIME 类型的内嵌资源返回。单文件上限为 5 MiB，更大的原件请从桌面端下载。能否在对话中预览图片或打开内嵌资源，取决于 AI 客户端。
+
 重新生成令牌会立即撤销旧令牌。若更换令牌或服务端口发生变化，请为客户端点「更新配置」并重新连接。应用会备份被修改的配置；请勿分享或提交包含令牌的文件。若 Claude Code 中同名的旧项目配置覆盖了用户级配置，请在该项目的 MCP 管理界面移除旧条目。
 
 ## 开发检查

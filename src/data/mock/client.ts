@@ -37,6 +37,7 @@ import {
   mockAttachments,
   mockComments,
   mockComponents,
+  mockHar,
   mockIssues,
   mockIssueTemplates,
   mockLabels,
@@ -67,6 +68,7 @@ export class MockDeskClient implements DeskClient {
   private issues = clone(mockIssues);
   private comments = clone(mockComments);
   private attachments = clone(mockAttachments);
+  private attachmentFiles = new Map<string, Blob>();
   private milestones = clone(mockMilestones);
   private components = clone(mockComponents);
   private templates = clone(mockIssueTemplates);
@@ -454,13 +456,28 @@ export class MockDeskClient implements DeskClient {
     return clone(comment);
   }
 
-  async listAttachments(issueId: string): Promise<Attachment[]> {
+  async listAttachments(issueId: string, options?: { fileId?: string }): Promise<Attachment[]> {
     this.assertWorkspace();
-    return clone(this.attachments.filter((item) => item.issueId === issueId));
+    return clone(this.attachments.filter((item) => item.issueId === issueId && (!options?.fileId || item.fileId === options.fileId)));
+  }
+
+  workspaceFileId(src: string): string | null {
+    return extractHulyFileId(src);
+  }
+
+  async fetchWorkspaceFile(fileId: string, signal: AbortSignal): Promise<Response> {
+    this.assertWorkspace();
+    signal.throwIfAborted();
+    const file = this.attachmentFiles.get(fileId);
+    if (file) return new Response(file);
+    if (fileId === "blob-mock-1" && this.attachments.some((item) => item.fileId === fileId)) {
+      return new Response(mockHar, { headers: { "Content-Type": "application/json" } });
+    }
+    return new Response(null, { status: 404 });
   }
 
   async resolveImageSrc(src: string): Promise<string | null> {
-    const fileId = extractHulyFileId(src);
+    const fileId = this.workspaceFileId(src);
     return this.attachments.find((item) => item.fileId === fileId)?.blobUrl ?? null;
   }
 
@@ -472,13 +489,14 @@ export class MockDeskClient implements DeskClient {
     const item: Attachment = {
       id: `att-${Date.now()}-${this.attachments.length + 1}`,
       issueId,
-      fileId: `blob-${Date.now()}`,
+      fileId: `blob-${Date.now()}-${this.attachments.length + 1}`,
       name: file.name,
       size: file.size,
       type: file.type || "application/octet-stream",
       lastModified: file.lastModified || Date.now(),
       blobUrl,
     };
+    this.attachmentFiles.set(item.fileId, file);
     this.attachments.unshift(item);
     return clone(item);
   }
@@ -501,6 +519,8 @@ export class MockDeskClient implements DeskClient {
 
   async deleteAttachment(_issueId: string, attachmentId: string): Promise<void> {
     this.assertWorkspace();
+    const fileId = this.attachments.find((item) => item.id === attachmentId)?.fileId;
+    if (fileId) this.attachmentFiles.delete(fileId);
     this.attachments = this.attachments.filter((item) => item.id !== attachmentId);
   }
 

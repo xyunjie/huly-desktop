@@ -1,6 +1,8 @@
 import { PROJECT_ISSUE_LIMIT, type DeskClient } from "@/data/client";
+import { isHulyFileId } from "@/data/huly/markup";
 import { safeErrorMessage } from "@/domain/secrets";
 import type { Issue } from "@/domain/types";
+import { listIssueFiles, readIssueFile } from "./issueFiles";
 
 /**
  * MCP tool catalog and calls. Rust handles the HTTP handshake and forwards
@@ -37,11 +39,34 @@ export const MCP_TOOLS: McpToolDefinition[] = [
   },
   {
     name: "get_issue",
-    description: "按编号获取任务详情：标题、Markdown 描述、最近评论和元数据。",
+    description: "按编号获取任务详情：标题、Markdown 描述、最近评论和元数据。要获取原始图片和附件，请用 list_issue_attachments 和 get_issue_attachment。",
     inputSchema: {
       type: "object",
       properties: { identifier: { type: "string", description: "任务编号，如 5093-174" } },
       required: ["identifier"],
+    },
+    annotations: { readOnlyHint: true },
+  },
+  {
+    name: "list_issue_attachments",
+    description: "列出任务附件、描述和评论中的 Huly 文件及图片，返回名称、类型和 fileId。不下载文件。",
+    inputSchema: {
+      type: "object",
+      properties: { identifier: { type: "string", description: "任务编号，如 5093-174" } },
+      required: ["identifier"],
+    },
+    annotations: { readOnlyHint: true },
+  },
+  {
+    name: "get_issue_attachment",
+    description: "按任务编号和 fileId 直接读取原件，不截图。PNG、JPEG、GIF、WebP 返回 MCP 图片，其他文件返回内嵌资源；单文件最大 5 MiB。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        identifier: { type: "string", description: "任务编号，如 5093-174" },
+        fileId: { type: "string", description: "list_issue_attachments 返回的 fileId" },
+      },
+      required: ["identifier", "fileId"],
     },
     annotations: { readOnlyHint: true },
   },
@@ -73,8 +98,8 @@ export const MCP_TOOLS: McpToolDefinition[] = [
   },
 ];
 
-function text(content: string): { content: { type: "text"; text: string }[]; isError?: boolean } {
-  return { content: [{ type: "text", text: content }] };
+function text(content: string) {
+  return { content: [{ type: "text" as const, text: content }] };
 }
 
 function formatPerson(issue: Issue, people: { id: string; name: string }[]): string {
@@ -153,7 +178,35 @@ async function toolGetIssue(client: DeskClient, args: Record<string, unknown>) {
       for (const c of recent.reverse()) lines.push(`- ${c.authorName}：${c.body}`);
     }
   } else lines.push("最近评论：暂不可用。");
-  return text(lines.join("\n"));
+  lines.push("图片和附件：先用 list_issue_attachments 获取 fileId，再用 get_issue_attachment 读取原件。");
+  // Huly's Markdown serializer can include a token in image URLs.
+  return text(lines.join("\n").replace(/([?&](?:token|access_token)=)[^&\s)<>]+/gi, "$1REDACTED"));
+}
+
+async function toolListAttachments(client: DeskClient, args: Record<string, unknown>, ensureCurrent: () => void) {
+  const identifier = str(args.identifier);
+  if (!identifier) throw new Error("缺少 identifier。");
+  const issue = await findIssue(client, identifier);
+  ensureCurrent();
+  const { files, warnings } = await listIssueFiles(client, issue);
+  const rows = [...files.values()].map(({ name, fileId, type, size, source }) =>
+    `${name}\tfileId=${fileId}\t${type ?? "类型未知"}${size === undefined ? "" : `\t${size} 字节`}\t${source}`,
+  );
+  return text([`${issue.identifier} 文件：`, ...(rows.length ? rows : ["未找到图片或附件。"]), ...warnings].join("\n"));
+}
+
+async function toolGetAttachment(client: DeskClient, args: Record<string, unknown>, ensureCurrent: () => void) {
+  const identifier = str(args.identifier);
+  const fileId = str(args.fileId);
+  if (!identifier) throw new Error("缺少 identifier。");
+  if (!isHulyFileId(fileId)) throw new Error("缺少或无效的 fileId，请先调用 list_issue_attachments。");
+  const issue = await findIssue(client, identifier);
+  ensureCurrent();
+  const attachments = await client.listAttachments(issue.id, { fileId });
+  const file = attachments.find((item) => item.fileId === fileId) ?? (await listIssueFiles(client, issue, fileId)).files.get(fileId);
+  if (!file) throw new Error("此任务中未找到该文件，请用 list_issue_attachments 核对 fileId。");
+  ensureCurrent();
+  return readIssueFile(client, issue, file);
 }
 
 async function toolUpdateStatus(client: DeskClient, args: Record<string, unknown>, ensureCurrent: () => void) {
@@ -191,7 +244,9 @@ function str(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
-const handlers: Record<string, (client: DeskClient, args: Record<string, unknown>, ensureCurrent: () => void) => Promise<ReturnType<typeof text>>> = {
+type ToolResult = ReturnType<typeof text> | Awaited<ReturnType<typeof readIssueFile>>;
+
+const handlers: Record<string, (client: DeskClient, args: Record<string, unknown>, ensureCurrent: () => void) => Promise<ToolResult>> = {
   list_projects: async (client) => {
     const projects = await client.listProjects();
     if (!projects.length) return text("工作区没有项目。");
@@ -206,6 +261,8 @@ const handlers: Record<string, (client: DeskClient, args: Record<string, unknown
   },
   list_issues: toolListIssues,
   get_issue: toolGetIssue,
+  list_issue_attachments: toolListAttachments,
+  get_issue_attachment: toolGetAttachment,
   update_issue_status: toolUpdateStatus,
   add_comment: toolAddComment,
 };

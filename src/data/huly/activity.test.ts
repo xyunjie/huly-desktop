@@ -55,6 +55,24 @@ describe("Huly activity feed", () => {
     await expect(loadActivityFeed(client, issue, classes, context)).rejects.toThrow("network down");
   });
 
+  it("keeps file nodes from referenced comments without loading historical snapshots", async () => {
+    const markup = '{"type":"doc","content":[{"type":"file","attrs":{"file-id":"file-1"}}]}';
+    const ref = "6afac43b3bdbbe14f03549b4";
+    const findAll = vi.fn().mockResolvedValue([
+      { _id: "comment-1", _class: classes.ChatMessage, message: ref },
+      { _id: "update-1", _class: classes.DocUpdateMessage, action: "update", attributeUpdates: { attrKey: "description", set: ["snapshot-1"] } },
+    ]);
+    const fetchMarkup = vi.fn().mockResolvedValue(markup);
+    const readDescriptionSnapshot = vi.fn();
+    const result = await loadActivityFeed({ findAll, fetchMarkup }, issue, classes, { ...context, commentsOnly: true, readDescriptionSnapshot });
+
+    expect(result.comments).toMatchObject([{ id: "comment-1", nativeMarkup: markup }]);
+    expect(result.activity).toEqual([]);
+    expect(findAll).toHaveBeenCalledOnce();
+    expect(fetchMarkup).toHaveBeenCalledWith(classes.ChatMessage, "comment-1", "message", ref, "markup");
+    expect(readDescriptionSnapshot).not.toHaveBeenCalled();
+  });
+
   it("filters description changes with identical text before displaying the feed", async () => {
     const edit = (id: string, before: string | null | undefined, after: string | null) => ({
       _id: id, _class: classes.DocUpdateMessage, action: "update",

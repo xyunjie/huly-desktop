@@ -428,13 +428,15 @@ export const mockComments: Comment[] = [
   },
 ];
 
+export const mockHar = '{"log":{"version":"1.2","creator":{"name":"Huly Desk Demo","version":"1"},"entries":[]}}';
+
 export const mockAttachments: Attachment[] = [
   {
     id: "att-1",
     issueId: "i-128",
     fileId: "blob-mock-1",
     name: "weak-network-har.json",
-    size: 48210,
+    size: mockHar.length,
     type: "application/json",
     lastModified: new Date("2026-11-17T15:30:00").getTime(),
   },

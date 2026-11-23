@@ -32,6 +32,7 @@ export async function loadActivityFeed(
     resolveAuthor: (ref?: string) => string;
     readDescriptionSnapshot?: (ref: string) => Promise<string>;
     refUrl?: string;
+    commentsOnly?: boolean;
   },
 ): Promise<IssueTimeline> {
   const readOptions = { sort: { createdOn: options.descending }, showArchived: true };
@@ -39,9 +40,10 @@ export async function loadActivityFeed(
   // updates are subclasses in the same feed, not two independent collections.
   const rows = await client.findAll<TimelineRow>(classes.ActivityMessage, {
     attachedTo: issue.id, space: issue.projectId,
+    ...(options.commentsOnly ? { _class: { $in: [classes.ChatMessage, classes.ThreadMessage] } } : {}),
   }, readOptions);
   let warning: string | undefined;
-  const externalReferences = (issue.referenceCount ?? 0) > 0
+  const externalReferences = !options.commentsOnly && (issue.referenceCount ?? 0) > 0
     ? await client.findAll<TimelineRow>(classes.ActivityReference, {
       attachedTo: issue.id, space: { $ne: issue.projectId },
     }, readOptions).catch(() => {
@@ -63,11 +65,14 @@ export async function loadActivityFeed(
     const isChat = row._class === classes.ChatMessage || row._class === classes.ThreadMessage;
     if (isChat) {
       let body = "";
+      let nativeMarkup = typeof row.message === "string" && isInlineMarkupJson(row.message) ? row.message : undefined;
       if (isInlineMarkupJson(row.message) || (typeof row.message === "string" && !descriptionIsRef(row.message))) {
         body = decodeMarkupToMarkdown(row.message, { refUrl: options.refUrl });
       } else if (row.message) {
         try {
-          body = await client.fetchMarkup(row._class ?? classes.ChatMessage, row._id, "message", row.message, "markdown");
+          const markup = await client.fetchMarkup(row._class ?? classes.ChatMessage, row._id, "message", row.message, "markup");
+          nativeMarkup = isInlineMarkupJson(markup) ? markup : undefined;
+          body = decodeMarkupToMarkdown(markup, { refUrl: options.refUrl });
         } catch {
           body = "（评论正文暂时无法加载）";
           timeline.warning ??= "部分评论正文未能加载。";
@@ -75,10 +80,10 @@ export async function loadActivityFeed(
       }
       body = body.trim() || ((row.attachments ?? 0) > 0 ? `（含 ${row.attachments} 个附件）` : "（无文字内容）");
       const providerLabel = row.provider && /(?:^|[:_-])email$/i.test(row.provider) ? "email" : undefined;
-      const nativeMarkup = typeof row.message === "string" && isInlineMarkupJson(row.message) ? row.message : undefined;
       timeline.comments.push({ ...base, body, providerLabel, nativeMarkup });
       continue;
     }
+    if (options.commentsOnly) continue;
 
     let body = "更新了任务信息";
     let change: IssueTimeline["activity"][number]["change"];

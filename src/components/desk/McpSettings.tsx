@@ -156,7 +156,7 @@ function McpSettings() {
         <Row last>
           <Label>可用工具</Label>
           <Typography.Text type="secondary" style={{ fontSize: 13 }}>
-            list_projects、list_issues、get_issue（只读）；update_issue_status、add_comment（写入）
+            list_projects、list_issues、get_issue、list_issue_attachments、get_issue_attachment（只读）；update_issue_status、add_comment（写入）
           </Typography.Text>
         </Row>
       </Card>

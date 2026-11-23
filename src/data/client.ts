@@ -30,6 +30,7 @@ import type {
 import type { WorkspaceRole } from "@/domain/roles";
 
 export const PROJECT_ISSUE_LIMIT = 500;
+export const ISSUE_ATTACHMENT_LIMIT = 100;
 
 export interface DeskClient {
   readonly mode: DataMode;
@@ -57,12 +58,14 @@ export interface DeskClient {
   listAssigned(personId: string): Promise<Pick<ProjectBundle, "issues" | "statuses">>;
   updateIssue(id: string, patch: IssuePatch): Promise<Issue>;
   createIssue(input: CreateIssueInput): Promise<Issue>;
-  loadIssueTimeline(issue: Issue): Promise<IssueTimeline>;
+  loadIssueTimeline(issue: Issue, options?: { commentsOnly?: boolean }): Promise<IssueTimeline>;
   listEditorTemplates(): Promise<EditorTemplate[]>;
   readDescriptionSnapshot?(ref: string): Promise<string>;
   addComment(issueId: string, body: string, format?: CommentFormat): Promise<Comment>;
   hydrateIssue(issue: Issue): Promise<Issue>;
-  listAttachments(issueId: string): Promise<Attachment[]>;
+  listAttachments(issueId: string, options?: { commentIds?: string[]; fileId?: string }): Promise<Attachment[]>;
+  workspaceFileId(src: string): string | null;
+  fetchWorkspaceFile(fileId: string, signal: AbortSignal): Promise<Response>;
   uploadAttachment(issueId: string, file: File): Promise<Attachment>;
   downloadAttachment(attachment: Attachment): Promise<void>;
   deleteAttachment(issueId: string, attachmentId: string): Promise<void>;

@@ -15,7 +15,7 @@ import {
   mapAccountWorkspace,
   withWorkspaceRenewal,
 } from "@/domain/session";
-import type { DeskClient } from "@/data/client";
+import { ISSUE_ATTACHMENT_LIMIT, type DeskClient } from "@/data/client";
 import { canChangeWorkspaceRole, canRemoveWorkspaceMember } from "@/domain/members";
 import {
   emailFromSocial,
@@ -63,6 +63,7 @@ import {
   decodeMarkupToMarkdown,
   encodeMarkdownToMarkup,
   extractHulyFileId,
+  isHulyFileId,
   isInlineMarkupJson,
   sameDescriptionMarkup,
 } from "./markup";
@@ -732,7 +733,7 @@ export class HulyDeskClient implements DeskClient {
     return mapped;
   }
 
-  async loadIssueTimeline(issue: Issue): Promise<IssueTimeline> {
+  async loadIssueTimeline(issue: Issue, options?: { commentsOnly?: boolean }): Promise<IssueTimeline> {
     const client = this.api();
     const [activityModule, chunterModule] = await Promise.all([
       import("@hcengineering/activity"), import("@hcengineering/chunter"), this.ensureAuthorDirectory(),
@@ -743,6 +744,7 @@ export class HulyDeskClient implements DeskClient {
       ? `${this.#serverUrl.replace(/\/+$/, "")}/browse?workspace=${encodeURIComponent(this.#workspaceUuid)}`
       : undefined;
     return loadActivityFeed(client, issue, { ...activity.class, ...chunter.class }, {
+      commentsOnly: options?.commentsOnly,
       descending: this.plugins().sorting.Descending,
       statuses: this.#statusCache,
       people: this.#peopleCache,
@@ -810,17 +812,34 @@ export class HulyDeskClient implements DeskClient {
     };
   }
 
-  async listAttachments(issueId: string): Promise<Attachment[]> {
+  async listAttachments(issueId: string, options?: { commentIds?: string[]; fileId?: string }): Promise<Attachment[]> {
+    const client = this.api();
+    const attachmentPlugin = readPlugin<{ class: { Attachment: string } }>(await import("@hcengineering/attachment"));
+    const rows = await client.findAll<RawAttachment>(
+      attachmentPlugin.class.Attachment,
+      {
+        attachedTo: options?.commentIds?.length ? { $in: [issueId, ...options.commentIds] } : issueId,
+        ...(options?.fileId ? { file: options.fileId } : {}),
+      },
+      { limit: ISSUE_ATTACHMENT_LIMIT, sort: { lastModified: this.plugins().sorting.Descending } },
+    );
+    return rows.map((row) => mapAttachment(row, issueId));
+  }
+
+  workspaceFileId(src: string): string | null {
+    return extractHulyFileId(src, this.#serverUrl);
+  }
+
+  async fetchWorkspaceFile(fileId: string, signal: AbortSignal): Promise<Response> {
+    if (!isHulyFileId(fileId)) throw new Error("文件 ID 无效。");
+    const url = this.resolveStorageUrl("files", fileId);
+    if (!url || !this.#workspaceToken) throw new Error("工作区的文件服务尚未就绪。");
     try {
-      const attachmentPlugin = readPlugin<{ class: { Attachment: string } }>(await import("@hcengineering/attachment"));
-      const rows = await this.api().findAll<RawAttachment>(
-        attachmentPlugin.class.Attachment,
-        { attachedTo: issueId },
-        { limit: 100, sort: { lastModified: this.plugins().sorting.Descending } },
-      );
-      return rows.map((row) => mapAttachment(row, issueId));
+      return await fetch(url, {
+        headers: { Authorization: `Bearer ${this.#workspaceToken}` }, credentials: "omit", redirect: "error", signal,
+      });
     } catch {
-      return [];
+      throw new Error("无法连接工作区的文件服务。");
     }
   }
 
@@ -1240,7 +1259,7 @@ export class HulyDeskClient implements DeskClient {
   }
 
   private async fetchImageObjectUrl(src: string): Promise<string | null> {
-    const fileId = extractHulyFileId(src, this.#serverUrl);
+    const fileId = this.workspaceFileId(src);
     const base = this.#serverUrl.replace(/\/+$/, "");
     const wsId = this.#workspaceUuid || this.#workspace?.id || "";
     const candidates: string[] = [];
