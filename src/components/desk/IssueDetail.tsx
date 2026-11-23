@@ -1,10 +1,4 @@
-import {
-  DeleteOutlined,
-  DownloadOutlined,
-  PaperClipOutlined,
-  PlusOutlined,
-  UploadOutlined,
-} from "@ant-design/icons";
+import { PlusOutlined } from "@ant-design/icons";
 import {
   Avatar,
   Button,
@@ -12,7 +6,6 @@ import {
   Divider,
   Input,
   InputNumber,
-  Popconfirm,
   Select,
   Skeleton,
   Space,
@@ -25,7 +18,7 @@ import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } 
 import { MarkdownView } from "@/components/MarkdownView";
 import { RenderBoundary } from "@/components/RenderBoundary";
 import { nameInitial } from "@/data/huly/mapping";
-import { avatarColor, formatCommentTime, formatDue, formatFileSize, formatHours, projectHeading } from "@/domain/format";
+import { avatarColor, formatCommentTime, formatDue, formatHours, projectHeading } from "@/domain/format";
 import { PRIORITY_COLOR, PRIORITY_LABEL, PRIORITY_ORDER } from "@/domain/priority";
 import type {
   ActivityItem,
@@ -45,6 +38,7 @@ import type {
 } from "@/domain/types";
 import { StatusIcon, StatusQuickSelect } from "./StatusBadge";
 import { IssueActivity } from "./IssueActivity";
+import { IssueAttachments } from "./IssueAttachments";
 
 const IssueDescriptionEditor = lazy(() => import("./IssueDescriptionEditor"));
 
@@ -113,9 +107,6 @@ export function IssueDetail({
 }) {
   const [title, setTitle] = useState(issue.title);
   const flushDescription = useRef<(() => Promise<boolean>) | null>(null);
-
-  const [uploading, setUploading] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [error, setError] = useState<string | null>(null);
 
@@ -190,19 +181,6 @@ export function IssueDetail({
     const flush = flushDescription.current;
     if (!flush) action();
     else void flush().then((ok) => { if (ok) action(); });
-  }
-
-  async function handleUploadFile(file: File) {
-    if (!onUploadAttachment || readOnly) return;
-    setUploading(true);
-    setError(null);
-    try {
-      await onUploadAttachment(file);
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "附件上传失败。");
-    } finally {
-      setUploading(false);
-    }
   }
 
   return (
@@ -369,87 +347,15 @@ export function IssueDetail({
               )}
             </section>
 
-            <section className="hd-detail-section">
-              <div className="hd-detail-section-head">
-                <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-                  <PaperClipOutlined style={{ color: "#5e6c84" }} />
-                  <Typography.Text strong style={{ fontSize: 14 }}>
-                    附件
-                  </Typography.Text>
-                  <span className="hd-group-count">{attachments.length}</span>
-                </span>
-                {!readOnly && onUploadAttachment ? (
-                  <>
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      style={{ display: "none" }}
-                      onChange={(event) => {
-                        const file = event.target.files?.[0];
-                        event.target.value = "";
-                        if (file) void handleUploadFile(file);
-                      }}
-                    />
-                    <Button
-                      size="small"
-                      icon={<UploadOutlined />}
-                      loading={uploading}
-                      onClick={() => fileInputRef.current?.click()}
-                    >
-                      上传附件
-                    </Button>
-                  </>
-                ) : null}
-              </div>
-              {attachments.length === 0 ? (
-                <Typography.Text type="secondary" style={{ fontSize: 13 }}>
-                  没有附件。
-                </Typography.Text>
-              ) : (
-                <div className="hd-detail-sublist">
-                  {attachments.map((att) => (
-                    <div key={att.id} className="hd-detail-att-row">
-                      <PaperClipOutlined style={{ color: "#6b778c", flex: "none" }} />
-                      <span className="hd-detail-subtitle" title={att.name}>
-                        {att.name}
-                      </span>
-                      <Typography.Text type="secondary" style={{ fontSize: 12, flex: "none" }}>
-                        {formatFileSize(att.size)}
-                      </Typography.Text>
-                      <Space size={4} style={{ flex: "none" }}>
-                        {onDownloadAttachment ? (
-                          <Button
-                            type="text"
-                            size="small"
-                            icon={<DownloadOutlined />}
-                            onClick={() => void onDownloadAttachment(att)}
-                            aria-label={`下载 ${att.name}`}
-                          >
-                            下载
-                          </Button>
-                        ) : null}
-                        {!readOnly && onDeleteAttachment ? (
-                          <Popconfirm
-                            title="确认删除该附件？"
-                            okText="删除"
-                            cancelText="取消"
-                            onConfirm={() => void onDeleteAttachment(att.id)}
-                          >
-                            <Button
-                              type="text"
-                              size="small"
-                              danger
-                              icon={<DeleteOutlined />}
-                              aria-label={`删除 ${att.name}`}
-                            />
-                          </Popconfirm>
-                        ) : null}
-                      </Space>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </section>
+            <IssueAttachments
+              key={`attachments:${issue.id}`}
+              attachments={attachments}
+              readOnly={readOnly}
+              resolveMedia={onResolveImage}
+              onUpload={onUploadAttachment}
+              onDownload={onDownloadAttachment}
+              onDelete={onDeleteAttachment}
+            />
 
             <section className="hd-detail-section">
               <div className="hd-detail-section-head">

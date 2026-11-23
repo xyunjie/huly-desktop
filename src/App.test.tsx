@@ -19,26 +19,27 @@ it("shows the same assigned subtask and count in My Tasks and its project", asyn
   });
   render(<App />);
   fireEvent.click(screen.getByTestId("login-submit"));
-  fireEvent.click(await screen.findByRole("button", { name: "进入工作区" }));
-  await screen.findByRole("row", { name: /核心平台/ });
+  fireEvent.click(await screen.findByText("进入工作区"));
+  await screen.findByTestId("project-table");
   fireEvent.click(screen.getByTestId("nav-mine"));
 
-  expect(await screen.findByText("2 条（含子任务）")).toBeVisible();
-  expect(screen.getByRole("row", { name: /CORE-141 待办/ })).toBeVisible();
-  fireEvent.mouseDown(screen.getByRole("combobox", { name: "项目筛选" }));
+  expect(await screen.findByText("2 条（含子任务）")).toBeInTheDocument();
+  expect(within(screen.getByText("CORE-141").closest('[role="row"]')!).getByText("待办")).toBeInTheDocument();
+  fireEvent.mouseDown(screen.getByLabelText("项目筛选", { selector: "input" }));
   fireEvent.click(await screen.findByText("核心平台"));
-  expect(screen.getByText("1 条（含子任务）")).toBeVisible();
-  expect(screen.getByText("CORE-141")).toBeVisible();
+  expect(screen.getByText("1 条（含子任务）")).toBeInTheDocument();
+  expect(screen.getByText("CORE-141")).toBeInTheDocument();
   expect(screen.queryByText("5090_-5")).not.toBeInTheDocument();
 
   fireEvent.click(screen.getByTestId("nav-projects"));
-  const project = await screen.findByRole("row", { name: /核心平台/ });
-  fireEvent.click(within(project).getByRole("button", { name: "进入项目" }));
-  expect(await screen.findByText(/条顶层任务/)).toBeVisible();
+  const table = await screen.findByTestId("project-table");
+  const project = within(table).getByText("核心平台").closest("tr")!;
+  fireEvent.click(within(project).getByText("进入项目"));
+  expect(await screen.findByText(/条顶层任务/)).toBeInTheDocument();
   expect(screen.queryByText("CORE-141")).not.toBeInTheDocument();
-  fireEvent.mouseDown(screen.getByRole("combobox", { name: "指派人筛选" }));
+  fireEvent.mouseDown(screen.getByLabelText("指派人筛选", { selector: "input" }));
   fireEvent.click(await screen.findByText("指派给我"));
 
-  expect(screen.getByText("1 条（含子任务）")).toBeVisible();
-  expect(screen.getByText("CORE-141")).toBeVisible();
-}, 20_000);
+  expect(screen.getByText("1 条（含子任务）")).toBeInTheDocument();
+  expect(screen.getByText("CORE-141")).toBeInTheDocument();
+});

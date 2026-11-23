@@ -38,7 +38,7 @@ export function validateLogin(draft: LoginDraft): LoginResult {
   }
 }
 
-export function explainConnectionError(error: unknown): string {
+export function explainConnectionError(error: unknown, method?: LoginDraft["method"]): string {
   const raw = error instanceof Error ? error.message : String(error ?? "");
   const message = raw.toLowerCase();
   if (/workspace .* not found|workspacenotfound|找不到这个工作区/.test(message)) {
@@ -49,6 +49,9 @@ export function explainConnectionError(error: unknown): string {
   }
   if (/登录已过期|令牌无效|token invalid|invalid token/.test(message)) {
     return "登录已过期，请重新登录。";
+  }
+  if (method === "password" && /account\s*not\s*found|invalid\s*password|wrong password|login failed/.test(message)) {
+    return "用户名或密码错误";
   }
   if (/login failed|invalid password|unauthorized|密码/.test(message)) {
     return "登录没有通过。请检查邮箱和密码，或改用 API key（令牌）。";

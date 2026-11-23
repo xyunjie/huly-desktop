@@ -626,17 +626,117 @@ body {
   font-size: 13px;
 }
 
-.hd-detail-att-row {
-  display: flex;
+.hd-attachment-heading {
+  display: inline-flex;
   align-items: center;
-  gap: 10px;
-  padding: 8px 12px;
-  background: #fff;
-  border-top: 1px solid #f2f4f7;
+  gap: 8px;
+  color: #5e6c84;
 }
 
-.hd-detail-att-row:first-child {
-  border-top: none;
+.hd-attachment-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 250px), 276px));
+  gap: 8px;
+  margin: 0;
+  padding: 8px;
+  list-style: none;
+  border: 1px solid #e0e2e6;
+  border-radius: 5px;
+  background: #f7f7f8;
+}
+
+.hd-attachment-card {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  border: 1px solid #dddfe2;
+  border-radius: 4px;
+  background: #f2f3f4;
+}
+
+.hd-attachment-card:is(:hover, :focus-within) {
+  border-color: #9db8e4;
+  background: #eef3fa;
+}
+
+@media (hover: hover) {
+  .hd-attachment-card:not(:hover):not(:focus-within) .hd-attachment-action {
+    opacity: 0;
+  }
+}
+
+.hd-attachment-open {
+  display: flex;
+  align-items: center;
+  align-self: stretch;
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  border-radius: 4px;
+  text-align: left;
+  color: inherit;
+  cursor: pointer;
+}
+
+.hd-attachment-open:focus-visible {
+  outline: 2px solid #1677ff;
+  outline-offset: -2px;
+}
+
+.hd-attachment-thumbnail {
+  display: grid;
+  place-items: center;
+  inline-size: 46px;
+  block-size: 46px;
+  flex: none;
+  overflow: hidden;
+  border-right: 1px solid #dddfe2;
+  border-radius: 3px 0 0 3px;
+  background: #fafafa;
+  color: #64748b;
+  font-size: 18px;
+}
+
+.hd-attachment-thumbnail img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.hd-attachment-info {
+  display: grid;
+  min-width: 0;
+  padding: 0 8px 0 10px;
+  line-height: 1.25;
+}
+
+.hd-attachment-name {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: #172b4d;
+  font-size: 13px;
+}
+
+.hd-attachment-size {
+  color: #667085;
+  font-size: 11px;
+}
+
+.hd-attachment-preview-media {
+  display: block;
+  max-width: 100%;
+  max-height: 72vh;
+  margin: 0 auto;
+  object-fit: contain;
+}
+
+.hd-attachment-preview-hint {
+  padding: 32px 0;
+  text-align: center;
+  color: #667085;
 }
 
 .hd-rich-description {

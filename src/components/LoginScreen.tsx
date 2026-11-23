@@ -42,6 +42,7 @@ export function LoginScreen({
   }
 
   function enter() {
+    if (busy) return;
     setLocalError(null);
     const checked = validateLogin(draft);
     if (!checked.ok) {
@@ -56,6 +57,7 @@ export function LoginScreen({
       <Form
         layout="vertical"
         requiredMark={false}
+        noValidate
         style={{ width: 400, background: "#fff", border: "1px solid #f0f0f0", borderRadius: 8, padding: "32px 32px 20px" }}
         onFinish={enter}
       >
@@ -107,7 +109,7 @@ export function LoginScreen({
           </Typography.Paragraph>
         ) : null}
         <Form.Item style={{ marginBottom: 8 }}>
-          <Button type="primary" htmlType="button" data-testid="login-submit" block size="large" loading={busy} onClick={enter}>
+          <Button type="primary" htmlType="submit" data-testid="login-submit" block size="large" loading={busy}>
             登录
           </Button>
         </Form.Item>

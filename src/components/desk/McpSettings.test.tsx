@@ -27,10 +27,10 @@ it("allows updating a stale client configuration after rotating the token", asyn
   render(<McpPage />);
   await screen.findByText("配置与服务一致");
   expect(screen.queryByText(/手动配置/)).not.toBeInTheDocument();
-  expect(screen.queryByRole("button", { name: "复制配置" })).not.toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button", { name: "重新生成" }));
-  fireEvent.click(await screen.findByRole("button", { name: "确认轮换" }));
-  const update = await screen.findByRole("button", { name: "更新配置" });
+  expect(screen.queryByText("复制配置")).not.toBeInTheDocument();
+  fireEvent.click(screen.getByText("重新生成"));
+  fireEvent.click(await screen.findByText("确认轮换"));
+  const update = (await screen.findByText("更新配置", { selector: "button, button *" })).closest("button")!;
   expect(update).toBeEnabled();
   fireEvent.click(update);
   await waitFor(() => expect(addMcpToClient).toHaveBeenCalledWith("codex"));

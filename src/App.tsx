@@ -1,6 +1,6 @@
 import { BellOutlined, PlusOutlined } from "@ant-design/icons";
 import { Badge, Button, Tag, Tooltip } from "antd";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { DeskScreen } from "@/components/desk/DeskScreen";
 import type { DeskNav } from "@/components/desk/Sidebar";
 import { LoginScreen } from "@/components/LoginScreen";
@@ -88,6 +88,7 @@ interface WorkspaceCache {
 
 export default function App() {
   const clientRef = useRef<DeskClient | null>(null);
+  const resolveImage = useCallback((src: string) => clientRef.current?.resolveImageSrc?.(src) ?? Promise.resolve(null), []);
   const mcpWorkspace = useRef<{ client: DeskClient } | null>(null);
   const savedRef = useRef<StoredSession | null>(null);
   const autoTried = useRef(false);
@@ -251,7 +252,7 @@ export default function App() {
       setPhase("pick-workspace");
     } catch (reason) {
       const secrets = [draft.password, draft.token];
-      setError(redactSecrets(explainConnectionError(reason), secrets));
+      setError(redactSecrets(explainConnectionError(reason, draft.method), secrets));
       setPhase("login");
     } finally {
       setBusy(false);
@@ -1349,7 +1350,7 @@ export default function App() {
               setProfileSaving(false);
             }
           }}
-          onResolveImage={(src) => clientRef.current?.resolveImageSrc?.(src) ?? Promise.resolve(null)}
+          onResolveImage={resolveImage}
           onLoadEditorTemplates={async () => {
             const client = clientRef.current;
             if (!client) throw new Error("尚未连接工作区。");

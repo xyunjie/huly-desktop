@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { parseServerConfig } from "./config";
 import { filterIssues, groupIssues, hasActiveFilters, pickInitialIssue } from "./filters";
 import { loadOfflineSnapshot, saveOfflineSnapshot, clearOfflineSnapshot } from "./cache";
-import { validateLogin } from "./login";
+import { explainConnectionError, validateLogin } from "./login";
 import { priorityFromHuly } from "./priority";
 import { buildSessionSecret, parseSessionSecret, redactSecrets } from "./secrets";
 import { categoryFromHuly, statusVisual } from "./status";
@@ -53,6 +53,14 @@ describe("session secret", () => {
     expect(message).not.toContain("hunter2");
     expect(message).not.toContain("abcdefgh");
   });
+});
+
+it("uses the same password-login error for a missing account and a wrong password", () => {
+  for (const code of ["AccountNotFound", "InvalidPassword"]) {
+    expect(explainConnectionError(new Error(`ERROR: platform:status:${code} {}`), "password")).toBe("用户名或密码错误");
+  }
+  expect(explainConnectionError(new Error("invalid token"), "token")).toBe("登录已过期，请重新登录。");
+  expect(explainConnectionError(new Error("connection timed out"), "password")).toMatch(/连接不到服务器/);
 });
 
 describe("config.json", () => {
