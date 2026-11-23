@@ -1,6 +1,7 @@
 import DOMPurify from "dompurify";
 import MarkdownIt from "markdown-it";
 import { useEffect, useMemo, useRef } from "react";
+import type { OpenImageViewer } from "./ImageViewer";
 
 const md = new MarkdownIt({ html: false, linkify: true, breaks: true });
 
@@ -44,14 +45,17 @@ function needsAuthResolution(src: string): boolean {
 export function MarkdownView({
   text,
   resolveImage,
+  onPreviewImage,
 }: {
   text: string;
   resolveImage?: (src: string) => Promise<string | null>;
+  onPreviewImage?: OpenImageViewer;
 }) {
   const html = useMemo(() => renderMarkdown(text.replace(/\r\n/g, "\n")), [text]);
   const ref = useRef<HTMLDivElement>(null);
   const resolveImageRef = useRef(resolveImage);
   resolveImageRef.current = resolveImage;
+  const canPreviewImage = Boolean(onPreviewImage);
 
   useEffect(() => {
     const root = ref.current;
@@ -76,18 +80,22 @@ export function MarkdownView({
       }
     };
 
-    if (resolveImageRef.current) {
-      const images = Array.from(root.querySelectorAll("img"));
-      for (const img of images) {
-        const rawSrc = img.dataset.rawSrc || img.getAttribute("src") || "";
-        if (!rawSrc || rawSrc.startsWith("blob:") || rawSrc === PLACEHOLDER_IMG) continue;
-        if (needsAuthResolution(rawSrc)) {
-          img.dataset.rawSrc = rawSrc;
-          if (img.src !== PLACEHOLDER_IMG && !img.src.startsWith("blob:")) {
-            img.src = PLACEHOLDER_IMG;
-          }
-          void tryResolve(img, rawSrc);
+    for (const img of root.querySelectorAll("img")) {
+      if (canPreviewImage && !img.closest("a")) {
+        img.classList.add("hd-inline-image-zoom");
+        img.tabIndex = 0;
+        img.setAttribute("role", "button");
+        img.setAttribute("aria-label", `预览 ${img.alt || "图片"}`);
+      }
+      if (!resolveImageRef.current) continue;
+      const rawSrc = img.dataset.rawSrc || img.getAttribute("src") || "";
+      if (!rawSrc || rawSrc.startsWith("blob:") || rawSrc === PLACEHOLDER_IMG) continue;
+      if (needsAuthResolution(rawSrc)) {
+        img.dataset.rawSrc = rawSrc;
+        if (img.src !== PLACEHOLDER_IMG && !img.src.startsWith("blob:")) {
+          img.src = PLACEHOLDER_IMG;
         }
+        void tryResolve(img, rawSrc);
       }
     }
 
@@ -109,7 +117,16 @@ export function MarkdownView({
       disposed = true;
       root.removeEventListener("error", onError, true);
     };
-  }, [html]);
+  }, [html, canPreviewImage]);
+
+  function previewImage(target: EventTarget | null) {
+    if (target instanceof HTMLImageElement && target.classList.contains("hd-inline-image-zoom") &&
+        target.getAttribute("src") && target.src !== PLACEHOLDER_IMG) {
+      onPreviewImage?.(target.src, target.alt || "图片", target);
+      return true;
+    }
+    return false;
+  }
 
   if (!text.trim()) return <p style={{ color: "#8c8c8c" }}>还没有描述。</p>;
   return (
@@ -118,6 +135,10 @@ export function MarkdownView({
       className="hd-markdown"
       style={{ fontSize: 13, lineHeight: 1.7, wordBreak: "break-word" }}
       dangerouslySetInnerHTML={{ __html: html }}
+      onClick={onPreviewImage ? (event) => previewImage(event.target) : undefined}
+      onKeyDown={onPreviewImage ? (event) => {
+        if ((event.key === "Enter" || event.key === " ") && previewImage(event.target)) event.preventDefault();
+      } : undefined}
     />
   );
 }

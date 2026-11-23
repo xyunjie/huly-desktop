@@ -7,6 +7,7 @@ import { Highlight, ServerKit, Subscript, Superscript } from "@hcengineering/tex
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { markdownToMarkup } from "@hcengineering/text-markdown";
 import { MarkdownView } from "@/components/MarkdownView";
+import type { OpenImageViewer } from "@/components/ImageViewer";
 import { HULY_IMAGE_PREFIX } from "@/data/huly/markup";
 import type { Attachment, EditorTemplate, Person } from "@/domain/types";
 import { compatibleEditorExtensions, fromEditorDocument, toEditorDocument } from "./hulyEditorDocument";
@@ -20,6 +21,7 @@ type Props = {
   onUpload?: (file: File) => Promise<Attachment | void>;
   onDownload?: (attachment: Attachment) => Promise<void>;
   onResolveImage?: (src: string) => Promise<string | null>;
+  onPreviewImage?: OpenImageViewer;
   onLoadTemplates?: () => Promise<EditorTemplate[]>;
 } & (
   | { mode?: "description"; onSave: (markup: string, previousMarkup?: string) => Promise<void>; flushRef: RefObject<(() => Promise<boolean>) | null> }
@@ -202,6 +204,14 @@ export default function IssueDescriptionEditor(props: Props) {
       const media = document.createElement(kind === "image" ? "img" : "video");
       if (media instanceof HTMLImageElement) { media.referrerPolicy = "no-referrer"; media.alt = name; }
       if (media instanceof HTMLVideoElement) { media.controls = true; media.preload = "metadata"; }
+      const zoom = kind === "image" && latest.current.onPreviewImage ? document.createElement("button") : null;
+      if (zoom) {
+        zoom.type = "button";
+        zoom.className = "hd-inline-image-zoom";
+        zoom.setAttribute("aria-label", `预览 ${name}`);
+        zoom.onclick = () => latest.current.onPreviewImage?.(media.src, name, zoom);
+        zoom.append(media);
+      }
       const hint = document.createElement("span");
       hint.textContent = `正在加载 · ${name}`;
       dom.append(hint);
@@ -213,10 +223,14 @@ export default function IssueDescriptionEditor(props: Props) {
         const localUrl = lookup && resolve ? await resolve(lookup).catch(() => null) : null;
         const url = localUrl ?? (!fileId ? source : null);
         if (disposed) return;
-        if (url) { media.src = url; dom.replaceChildren(media); }
+        if (url) { media.src = url; dom.replaceChildren(zoom ?? media); }
         else hint.textContent = `无法预览 · ${name}`;
       })();
-      return { dom, destroy() { disposed = true; } };
+      return {
+        dom,
+        stopEvent: (event: Event) => Boolean(zoom && event.target instanceof Node && zoom.contains(event.target)),
+        destroy() { disposed = true; },
+      };
     };
 
     const instance = new Editor({
@@ -340,7 +354,7 @@ export default function IssueDescriptionEditor(props: Props) {
     }}>
       <div ref={host} className="hd-rich-description-body" hidden={!ready} />
       {!ready && error && props.markdown.trim() ? (
-        <div className="hd-detail-desc-box"><MarkdownView text={props.markdown} resolveImage={props.onResolveImage} /></div>
+        <div className="hd-detail-desc-box"><MarkdownView text={props.markdown} resolveImage={props.onResolveImage} onPreviewImage={props.onPreviewImage} /></div>
       ) : null}
       {!props.readOnly ? (
         <div className="hd-rich-description-footer">

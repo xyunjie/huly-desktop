@@ -16,6 +16,7 @@ import zhDatePicker from "antd/es/date-picker/locale/zh_CN";
 import dayjs from "dayjs";
 import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { MarkdownView } from "@/components/MarkdownView";
+import { ImageViewer } from "@/components/ImageViewer";
 import { RenderBoundary } from "@/components/RenderBoundary";
 import { nameInitial } from "@/data/huly/mapping";
 import { avatarColor, formatCommentTime, formatDue, formatHours, projectHeading } from "@/domain/format";
@@ -109,6 +110,15 @@ export function IssueDetail({
   const flushDescription = useRef<(() => Promise<boolean>) | null>(null);
 
   const [error, setError] = useState<string | null>(null);
+  const [descriptionImage, setDescriptionImage] = useState<{ src: string; name: string; trigger: HTMLElement } | null>(null);
+
+  const descriptionFallback = issue.description.trim() ? (
+    <MarkdownView text={issue.description} resolveImage={onResolveImage} onPreviewImage={previewDescriptionImage} />
+  ) : null;
+
+  function previewDescriptionImage(src: string, name: string, trigger: HTMLElement) {
+    setDescriptionImage({ src, name, trigger });
+  }
 
   const children = useMemo(
     () => issues.filter((item) => item.parentIds.includes(issue.id)),
@@ -318,17 +328,17 @@ export function IssueDetail({
                 <Skeleton active title={false} paragraph={{ rows: 3 }} />
               ) : issue.descriptionUnavailable && !issue.descriptionMarkup ? (
                 <div className="hd-detail-desc-box">
-                  {issue.description.trim() ? <MarkdownView text={issue.description} resolveImage={onResolveImage} /> : null}
+                  {descriptionFallback}
                   <Typography.Text type="secondary">未能加载富文本原文，请刷新后再编辑。</Typography.Text>
                 </div>
               ) : (
                 <RenderBoundary key={issue.id} fallback={
                   <div className="hd-detail-desc-box">
-                    {issue.description.trim() ? <MarkdownView text={issue.description} resolveImage={onResolveImage} /> : null}
+                    {descriptionFallback}
                     <Typography.Text type="secondary" role="alert">描述编辑器未能加载，当前仅可查看。重新打开应用后可重试。</Typography.Text>
                   </div>
                 }>
-                  <Suspense fallback={issue.description ? <MarkdownView text={issue.description} resolveImage={onResolveImage} /> : <Skeleton title={false} paragraph={{ rows: 1 }} />}>
+                  <Suspense fallback={descriptionFallback ?? <Skeleton title={false} paragraph={{ rows: 1 }} />}>
                     <IssueDescriptionEditor
                       issueId={issue.id}
                       markdown={issue.description}
@@ -339,12 +349,19 @@ export function IssueDetail({
                       onUpload={onUploadAttachment}
                       onDownload={onDownloadAttachment}
                       onResolveImage={onResolveImage}
+                      onPreviewImage={previewDescriptionImage}
                       onLoadTemplates={onLoadEditorTemplates}
                       flushRef={flushDescription}
                     />
                   </Suspense>
                 </RenderBoundary>
               )}
+              {descriptionImage ? (
+                <ImageViewer src={descriptionImage.src} name={descriptionImage.name} onClose={() => {
+                  setDescriptionImage(null);
+                  descriptionImage.trigger.focus();
+                }} />
+              ) : null}
             </section>
 
             <IssueAttachments

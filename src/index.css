@@ -733,10 +733,47 @@ body {
   object-fit: contain;
 }
 
-.hd-attachment-preview-hint {
+.hd-attachment-preview-hint, .hd-image-viewer-hint {
   padding: 32px 0;
   text-align: center;
   color: #667085;
+}
+
+.hd-image-viewer .ant-image-preview-body .ant-image-preview-img {
+  max-width: calc(100vw - 48px);
+  max-height: calc(100vh - 128px);
+}
+
+.hd-image-viewer-hint {
+  color: #dbe3ef;
+}
+
+.hd-image-viewer-title, .hd-image-viewer-actions {
+  position: fixed;
+  top: 16px;
+  z-index: 1;
+  color: #f0f4fa;
+}
+
+.hd-image-viewer-title {
+  left: 24px;
+  max-width: calc(100vw - 220px);
+  line-height: 32px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hd-image-viewer .hd-image-viewer-actions {
+  right: 24px;
+  bottom: auto;
+  left: auto;
+  transform: none;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  pointer-events: auto;
 }
 
 .hd-rich-description {
@@ -779,7 +816,10 @@ body {
 .hd-rich-description-body .tiptap ul[data-type="todoList"] li p { margin: 0; }
 .hd-rich-description-body .antiMention { color: #1868db; background: #eef4ff; border-radius: 3px; padding: 0 2px; }
 .hd-editor-media { display: inline-block; max-width: 100%; vertical-align: top; margin: 4px 0; }
-.hd-editor-media > :is(img, video) { display: block; max-width: 100%; max-height: 520px; border-radius: 4px; }
+.hd-editor-media > :is(img, video), .hd-editor-media button > img { display: block; max-width: 100%; max-height: 520px; border-radius: 4px; }
+.hd-inline-image-zoom { cursor: zoom-in; }
+button.hd-inline-image-zoom { max-width: 100%; padding: 0; background: none; border: 0; border-radius: 4px; }
+.hd-inline-image-zoom:focus-visible { outline: 2px solid #1677ff; outline-offset: 2px; }
 .hd-editor-media > span, .hd-editor-file { display: inline-block; padding: 3px 6px; background: #f5f6f8; color: #42526e; border-radius: 4px; }
 .hd-editor-file > button { border: 0; background: transparent; color: #1868db; cursor: pointer; font: inherit; }
 .hd-rich-description-footer { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 3px 6px 6px; }

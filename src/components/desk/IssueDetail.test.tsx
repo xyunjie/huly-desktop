@@ -159,5 +159,13 @@ describe("IssueDetail", () => {
     expect(saved).toContain('"file-id":"image-1"');
     expect(saved).toContain('"width":1440');
     expect(saved).not.toContain("blob:preview-only");
+
+    const imageButton = within(editor).getByLabelText("预览 录屏截图");
+    fireEvent.click(within(imageButton).getByAltText("录屏截图"));
+    const imageViewer = await screen.findByRole("dialog", { name: "录屏截图" });
+    expect(within(imageViewer).getByAltText("录屏截图")).toHaveAttribute("src", "blob:preview-only");
+    fireEvent.click(within(imageViewer).getByLabelText("关闭预览"));
+    expect(imageButton).toHaveFocus();
+    expect(onUpdate).toHaveBeenCalledOnce();
   });
 });

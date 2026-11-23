@@ -1,6 +1,7 @@
 import { DeleteOutlined, DownloadOutlined, FileOutlined, PaperClipOutlined, PictureOutlined, PlayCircleOutlined, UploadOutlined } from "@ant-design/icons";
 import { Button, Modal, Popconfirm, Typography } from "antd";
 import { useEffect, useRef, useState } from "react";
+import { ImageViewer } from "@/components/ImageViewer";
 import { HULY_IMAGE_PREFIX } from "@/data/huly/markup";
 import { formatFileSize } from "@/domain/format";
 import type { Attachment } from "@/domain/types";
@@ -16,6 +17,7 @@ export function IssueAttachments({ attachments, readOnly, onUpload, onDownload, 
   resolveMedia?: ResolveMedia;
 }) {
   const fileInput = useRef<HTMLInputElement>(null);
+  const previewTrigger = useRef<HTMLButtonElement>(null);
   const [uploading, setUploading] = useState(false);
   const [preview, setPreview] = useState<Attachment | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -58,11 +60,12 @@ export function IssueAttachments({ attachments, readOnly, onUpload, onDownload, 
         <ul className="hd-attachment-grid" aria-label="附件列表">
           {attachments.map((attachment) => (
             <li key={attachment.id} className="hd-attachment-card">
-              <button type="button" className="hd-attachment-open" aria-label={`预览 ${attachment.name}`} onClick={() => {
+              <button type="button" className="hd-attachment-open" aria-label={`预览 ${attachment.name}`} onClick={(event) => {
+                previewTrigger.current = event.currentTarget;
                 setError(null);
                 setPreview(attachment);
               }}>
-                <AttachmentMedia attachment={attachment} resolveMedia={resolveMedia} thumbnail />
+                <AttachmentMedia attachment={attachment} resolveMedia={resolveMedia} />
                 <span className="hd-attachment-info">
                   <span className="hd-attachment-name" title={attachment.name}>{attachment.name}</span>
                   <span className="hd-attachment-size">{formatFileSize(attachment.size)}</span>
@@ -82,13 +85,13 @@ export function IssueAttachments({ attachments, readOnly, onUpload, onDownload, 
           ))}
         </ul>
       )}
-      <Modal open={preview !== null} title={preview?.name} width="min(880px, calc(100vw - 32px))" destroyOnHidden
-        onCancel={() => setPreview(null)} footer={preview && onDownload ? (
-          <Button icon={<DownloadOutlined />} onClick={() => void run(() => onDownload(preview), "附件下载失败。")}>下载附件</Button>
-        ) : null}>
-        {preview ? <AttachmentMedia key={preview.id} attachment={preview} resolveMedia={resolveMedia} /> : null}
-        {error ? <Typography.Paragraph type="danger" role="alert">{error}</Typography.Paragraph> : null}
-      </Modal>
+      {preview ? (
+        <AttachmentMedia key={preview.id} attachment={preview} resolveMedia={resolveMedia} viewer={{
+          close: () => { setPreview(null); previewTrigger.current?.focus(); },
+          download: onDownload && (() => void run(() => onDownload(preview), "附件下载失败。")),
+          error,
+        }} />
+      ) : null}
     </section>
   );
 }
@@ -104,12 +107,13 @@ function mediaKind({ type, name }: Attachment) {
   return null;
 }
 
-function AttachmentMedia({ attachment, resolveMedia, thumbnail = false }: {
+function AttachmentMedia({ attachment, resolveMedia, viewer }: {
   attachment: Attachment;
   resolveMedia?: ResolveMedia;
-  thumbnail?: boolean;
+  viewer?: { close: () => void; download?: () => void; error: string | null };
 }) {
   const kind = mediaKind(attachment);
+  const thumbnail = !viewer;
   const frame = useRef<HTMLSpanElement>(null);
   const [url, setUrl] = useState<string | null>();
   const { blobUrl, fileId, name } = attachment;
@@ -134,18 +138,29 @@ function AttachmentMedia({ attachment, resolveMedia, thumbnail = false }: {
     return () => { active = false; observer?.disconnect(); };
   }, [blobUrl, fileId, kind, resolveMedia, thumbnail]);
 
-  if (thumbnail) return (
+  if (!viewer) return (
     <span ref={frame} className="hd-attachment-thumbnail" aria-hidden="true">
       {url ? <img src={url} alt="" onError={() => setUrl(null)} /> :
         kind === "image" ? <PictureOutlined /> : kind === "video" ? <PlayCircleOutlined /> : <FileOutlined />}
     </span>
   );
-  if (!kind) return <p className="hd-attachment-preview-hint">此文件类型不支持预览，请下载查看。</p>;
-  if (url === undefined) return <p className="hd-attachment-preview-hint" role="status">正在加载预览…</p>;
-  if (!url) return <p className="hd-attachment-preview-hint" role="status">无法预览此附件，请下载查看。</p>;
-  return kind === "image" ? (
-    <img className="hd-attachment-preview-media" src={url} alt={name} onError={() => setUrl(null)} />
-  ) : (
-    <video className="hd-attachment-preview-media" src={url} aria-label={name} controls playsInline onError={() => setUrl(null)} />
+  const download = viewer.download ? <Button icon={<DownloadOutlined />} onClick={viewer.download}>下载附件</Button> : null;
+  if (kind === "image") return (
+    <ImageViewer src={url} name={name} onClose={viewer.close} unavailableText="无法预览此附件，请下载查看。"
+      actions={<>
+        {viewer.error ? <span role="alert">{viewer.error}</span> : null}
+        {download}
+      </>} />
+  );
+
+  const message = !kind ? "此文件类型不支持预览，请下载查看。" :
+    url === undefined ? "正在加载预览…" : "无法预览此附件，请下载查看。";
+  return (
+    <Modal open title={name} width="min(880px, calc(100vw - 32px))" onCancel={viewer.close} footer={download}>
+      {kind === "video" && url ? (
+        <video className="hd-attachment-preview-media" src={url} aria-label={name} controls playsInline onError={() => setUrl(null)} />
+      ) : <p className="hd-attachment-preview-hint" role="status">{message}</p>}
+      {viewer.error ? <Typography.Paragraph type="danger" role="alert">{viewer.error}</Typography.Paragraph> : null}
+    </Modal>
   );
 }
